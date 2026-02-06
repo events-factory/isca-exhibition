@@ -1,0 +1,149 @@
+.booth-list-container {
+  background: white;
+  padding: 20px;
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+  width: 300px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.booth-list-container h3 {
+  margin: 0 0 15px 0;
+  font-size: 18px;
+  color: #333;
+  border-bottom: 2px solid #007bff;
+  padding-bottom: 8px;
+}
+
+.booth-list-stats {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 15px;
+  padding: 10px;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  flex-wrap: wrap;
+}
+
+.stat {
+  font-size: 12px;
+  color: #666;
+}
+
+.stat strong {
+  color: #333;
+  font-size: 16px;
+}
+
+.stat.available strong {
+  color: #28a745;
+}
+
+.stat.booked strong {
+  color: #dc3545;
+}
+
+.booth-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.booth-list-item {
+  padding: 12px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: white;
+}
+
+.booth-list-item:hover {
+  border-color: #007bff;
+  transform: translateX(3px);
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.2);
+}
+
+.booth-list-item.selected {
+  border-color: #007bff;
+  background-color: #e7f3ff;
+  box-shadow: 0 2px 8px rgba(0, 123, 255, 0.3);
+}
+
+.booth-list-item.booked {
+  background-color: #fff5f5;
+}
+
+.booth-list-item.reserved {
+  background-color: #fffbf0;
+}
+
+.booth-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.booth-number {
+  font-weight: 600;
+  font-size: 16px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.category-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid #ddd;
+}
+
+.booth-status {
+  font-size: 18px;
+}
+
+.booth-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: #666;
+}
+
+.booth-size {
+  font-weight: 500;
+  color: #555;
+}
+
+.booth-location {
+  color: #888;
+  font-size: 12px;
+}
+
+.booth-booked-info {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e0e0e0;
+  font-size: 12px;
+  color: #666;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .booth-list-container {
+    width: 250px;
+  }
+}
+
+@media (max-width: 768px) {
+  .booth-list-container {
+    display: none;
+  }
+}
