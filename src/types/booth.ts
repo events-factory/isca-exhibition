@@ -17,6 +17,7 @@ export interface ApiProduct {
   prices: string;
   banner?: string; // Single banner URL
   banners?: ApiProductBanner[]; // Array of banners (if API returns this format)
+  booth_numbers?: string[]; // Array of booth numbers (e.g., ["01", "02", "03"])
 }
 
 export interface ApiEventDescription {

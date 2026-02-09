@@ -5,6 +5,7 @@
   flex-direction: column;
   background-color: #f5f5f5;
   overflow: hidden;
+  position: relative; /* Create positioning context */
 }
 
 .controls {

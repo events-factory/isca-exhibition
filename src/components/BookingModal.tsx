@@ -26,6 +26,7 @@ interface BookingModalProps {
     email: string,
     designs: Map<string, { designId: string; designPrice: number }>
   ) => void;
+  availablePaymentMethods?: PaymentMethod[];
 }
 
 const BookingModal: React.FC<BookingModalProps> = ({
@@ -33,6 +34,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
   isOpen,
   onClose,
   onBook,
+  availablePaymentMethods,
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedDesigns, setSelectedDesigns] = useState<Map<string, BoothDesign>>(new Map());
@@ -59,8 +61,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
   }, [booths, expandedBoothId]);
 
-  // Fetch payment methods from first booth's product
+  // Use payment methods from prop (initial API response), fallback to product details fetch
   useEffect(() => {
+    if (availablePaymentMethods && availablePaymentMethods.length > 0) {
+      setPaymentMethods(availablePaymentMethods);
+      return;
+    }
+
     const firstBooth = booths[0];
     const productId = firstBooth?.apiProduct?.id || firstBooth?.apiProduct?.product_code;
     if (productId) {
@@ -74,7 +81,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
           console.error('Failed to load payment methods:', error);
         });
     }
-  }, [booths]);
+  }, [booths, availablePaymentMethods]);
 
   // Get available designs for a specific booth
   const getAvailableDesigns = (booth: Booth): BoothDesign[] => {

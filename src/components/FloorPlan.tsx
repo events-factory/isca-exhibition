@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Booth, BoothDesign, INITIAL_BOOTHS } from '../types/booth';
+import { Booth, BoothDesign, INITIAL_BOOTHS, PaymentMethod } from '../types/booth';
 import BookingModal from './BookingModal';
 import Legend from './Legend';
 import BoothList from './BoothList';
 import SelectionBadge from './SelectionBadge';
 import SelectionModal from './SelectionModal';
-import { fetchExhibitionPackages } from '../services/api';
+import { fetchExhibitionPackages, fetchProductDetails } from '../services/api';
 import './FloorPlan.css';
 
 const FloorPlan: React.FC = () => {
@@ -25,6 +25,7 @@ const FloorPlan: React.FC = () => {
   const [lastTouchDistance, setLastTouchDistance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const svgContainerRef = useRef<HTMLDivElement>(null);
 
   // Refs for stable SVG event handlers (prevents duplicate listener issues)
@@ -43,46 +44,66 @@ const FloorPlan: React.FC = () => {
 
         // Transform API products into booth format
         if (data.products && data.products.length > 0) {
-          // Enrich INITIAL_BOOTHS with API product data based on size matching
+          // Build a size-to-product map for matching booths by size category
+          const sizeToProduct = new Map<string, typeof data.products[0]>();
+          for (const product of data.products) {
+            // Extract size pattern from product sizes (e.g., "2m*3m" -> "3x2", "3m*3m" -> "3x3")
+            const sizeMatch = product.sizes?.match(/(\d+)m?\*(\d+)m?/);
+            if (sizeMatch) {
+              const [, w, h] = sizeMatch;
+              // Normalize: larger dimension first (e.g., "2m*3m" -> "3x2")
+              const a = Math.max(Number(w), Number(h));
+              const b = Math.min(Number(w), Number(h));
+              sizeToProduct.set(`${a}x${b}`, product);
+            }
+          }
+
           const enrichedBooths = INITIAL_BOOTHS.map((booth) => {
-            // Extract size pattern from booth (e.g., "3mx2m" -> "3x2")
-            const boothSizeMatch = booth.size.match(/(\d+)mx(\d+)m/);
+            // Try booth_numbers matching first
+            let matchedProduct = data.products.find(
+              (product) =>
+                product.booth_numbers &&
+                Array.isArray(product.booth_numbers) &&
+                product.booth_numbers.includes(booth.id)
+            );
 
-            if (boothSizeMatch) {
-              const width = boothSizeMatch[1];
-              const height = boothSizeMatch[2];
-
-              // Search for product that contains this size pattern in name or sizes
-              const matchedProduct = data.products.find((product) => {
-                // Create regex to search for size pattern like "3x2" or "3X2" or "3mX2M"
-                const sizeRegex = new RegExp(
-                  `${width}\\s*[mM]?\\s*[xX×]\\s*${height}\\s*[mM]?`,
-                  'i'
-                );
-
-                // Check in product name or sizes field
-                return (
-                  sizeRegex.test(product.name_english) ||
-                  sizeRegex.test(product.sizes)
-                );
-              });
-
-              if (matchedProduct) {
-                const price = parseFloat(matchedProduct.prices);
-
-                return {
-                  ...booth,
-                  price: isNaN(price) ? booth.price : price,
-                  productCode: matchedProduct.product_code,
-                  description: matchedProduct.description_english,
-                  apiProduct: matchedProduct,
-                };
+            // Fallback: match by booth size (e.g., "3mx2m" -> "3x2")
+            if (!matchedProduct) {
+              const boothSizeMatch = booth.size.match(/(\d+)mx(\d+)m/);
+              if (boothSizeMatch) {
+                const a = Math.max(Number(boothSizeMatch[1]), Number(boothSizeMatch[2]));
+                const b = Math.min(Number(boothSizeMatch[1]), Number(boothSizeMatch[2]));
+                matchedProduct = sizeToProduct.get(`${a}x${b}`);
               }
             }
+
+            if (matchedProduct) {
+              const price = parseFloat(matchedProduct.prices);
+              return {
+                ...booth,
+                price: isNaN(price) ? booth.price : price,
+                productCode: matchedProduct.product_code,
+                description: matchedProduct.description_english,
+                apiProduct: matchedProduct,
+              };
+            }
+
             return booth;
           });
 
           setBooths(enrichedBooths);
+
+          // Fetch payment methods from first product's details endpoint
+          const firstProductId = data.products[0].id;
+          if (firstProductId) {
+            fetchProductDetails(firstProductId)
+              .then((details) => {
+                if (details.payment_method && Array.isArray(details.payment_method)) {
+                  setPaymentMethods(details.payment_method);
+                }
+              })
+              .catch(() => {});
+          }
         }
       } catch (err) {
         console.error('Failed to load exhibition data:', err);
@@ -104,13 +125,9 @@ const FloorPlan: React.FC = () => {
 
       setSelectedBooths((prev) => {
         const exists = prev.find((b) => b.id === boothId);
-        if (exists) {
-          // Remove from selection
-          return prev.filter((b) => b.id !== boothId);
-        } else {
-          // Add to selection
-          return [...prev, booth];
-        }
+        return exists
+          ? prev.filter((b) => b.id !== boothId)
+          : [...prev, booth];
       });
     },
     [booths]
@@ -359,7 +376,7 @@ const FloorPlan: React.FC = () => {
       }
 
       // Add styling to SVG to enable interactions
-      const style = svgDoc.createElement('style');
+      const style = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'style');
       style.textContent = `
         text[class*="cls-"] {
           cursor: pointer;
@@ -369,28 +386,6 @@ const FloorPlan: React.FC = () => {
           opacity: 0.7;
           filter: drop-shadow(0 0 10px rgba(0, 150, 255, 0.8));
         }
-        .booth-highlight {
-          filter: drop-shadow(0 0 15px rgba(0, 150, 255, 1));
-          opacity: 0.8;
-        }
-        .booth-bg-available {
-          fill: #28a745;
-          opacity: 0.8;
-          stroke: #28a745;
-          stroke-width: 3;
-        }
-        .booth-bg-booked {
-          fill: #dc3545;
-          opacity: 0.8;
-          stroke: #dc3545;
-          stroke-width: 3;
-        }
-        .booth-bg-reserved {
-          fill: #ffc107;
-          opacity: 0.8;
-          stroke: #ffc107;
-          stroke-width: 3;
-        }
         .booth-text-highlight {
           font-weight: bold;
           fill: #fff !important;
@@ -398,26 +393,27 @@ const FloorPlan: React.FC = () => {
         .booth-dimmed {
           opacity: 0.2;
         }
+        .booth-dynamic-highlight {
+          pointer-events: none;
+        }
+        @keyframes boothPulse {
+          0%, 100% { fill-opacity: 0.85; }
+          50% { fill-opacity: 1; }
+        }
+        .booth-dynamic-highlight {
+          animation: boothPulse 2s ease-in-out infinite;
+        }
       `;
-      svgDoc.head?.appendChild(style);
+      // SVG documents don't have <head>, append style to <svg> root
+      svg.appendChild(style);
 
       // Find all text elements that contain booth numbers
       const textElements = svgDoc.querySelectorAll('text');
 
-      // Helper function to find the white background rect for a booth text element
-      const findBoothBackgroundRect = (textElement: Element): SVGRectElement | null => {
-        let parentGroup = textElement.parentElement;
-        while (parentGroup && parentGroup.tagName.toLowerCase() !== 'svg') {
-          const siblingRect = parentGroup.querySelector('rect');
-          if (siblingRect) {
-            return siblingRect as SVGRectElement;
-          }
-          parentGroup = parentGroup.parentElement;
-        }
-        return null;
-      };
-
       const updateBoothHighlighting = () => {
+        // Remove all previously created dynamic highlight rects
+        svgDoc.querySelectorAll('.booth-dynamic-highlight').forEach((el: Element) => el.remove());
+
         textElements.forEach((textElement) => {
           const textContent = textElement.textContent?.trim();
 
@@ -428,59 +424,53 @@ const FloorPlan: React.FC = () => {
             const booth = boothsRef.current.find((b) => b.id === boothId);
             const isSelected = selectedBoothsRef.current.some((b) => b.id === boothId);
 
-            // Find the white background rect for this booth
-            const bgRect = findBoothBackgroundRect(textElement);
-
-            // Store original fill on first run
-            if (bgRect && !(bgRect as any).__originalFill) {
-              (bgRect as any).__originalFill = bgRect.getAttribute('fill') ||
-                window.getComputedStyle(bgRect).fill;
-            }
-
-            // Remove all status classes from text
+            // Remove highlight classes from text
             textElement.classList.remove(
               'booth-text-highlight',
               'booth-dimmed'
             );
 
+            // Helper: create a highlight rect behind the text element
+            const createHighlightRect = (color: string, strokeColor: string) => {
+              try {
+                const bbox = (textElement as SVGTextElement).getBBox();
+                const transform = textElement.getAttribute('transform') || '';
+                const padding = 12;
+                const rect = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                rect.setAttribute('x', String(bbox.x - padding));
+                rect.setAttribute('y', String(bbox.y - padding));
+                rect.setAttribute('width', String(bbox.width + padding * 2));
+                rect.setAttribute('height', String(bbox.height + padding * 2));
+                rect.setAttribute('rx', '6');
+                rect.setAttribute('ry', '6');
+                rect.setAttribute('transform', transform);
+                rect.setAttribute('fill', color);
+                rect.setAttribute('stroke', strokeColor);
+                rect.setAttribute('stroke-width', '3');
+                rect.classList.add('booth-dynamic-highlight');
+                // Insert before the text so it renders behind it
+                textElement.parentElement?.insertBefore(rect, textElement);
+              } catch (e) {
+                // getBBox may fail if element is not rendered
+              }
+            };
+
             // Priority: Selected > Category filter > Default
             if (isSelected) {
-              // Booth is selected - show blue
+              createHighlightRect('#007bff', '#0056b3');
               textElement.classList.add('booth-text-highlight');
-              if (bgRect) {
-                bgRect.style.cssText = `fill: #007bff !important; fill-opacity: 1 !important; stroke: #0056b3 !important; stroke-width: 3px !important;`;
-              }
             } else if (booth && selectedCategoryRef.current !== null) {
-              // Category is selected - highlight booths in that category
               if (booth.category === selectedCategoryRef.current) {
-                // Add text highlight
                 textElement.classList.add('booth-text-highlight');
-
-                // Set color based on status
                 let bgColor = '#28a745'; // available (green)
                 if (booth.status === 'booked') {
                   bgColor = '#dc3545'; // red
                 } else if (booth.status === 'reserved') {
                   bgColor = '#ffc107'; // yellow
                 }
-
-                // Color the existing white background rect
-                if (bgRect) {
-                  bgRect.style.cssText = `fill: ${bgColor} !important; fill-opacity: 1 !important; stroke: ${bgColor} !important; stroke-width: 2px !important;`;
-                }
+                createHighlightRect(bgColor, bgColor);
               } else {
-                // Dim booths not in selected category
                 textElement.classList.add('booth-dimmed');
-
-                // Reset background rect to original
-                if (bgRect) {
-                  bgRect.style.cssText = '';
-                }
-              }
-            } else {
-              // No category selected - reset background rect to original
-              if (bgRect) {
-                bgRect.style.cssText = '';
               }
             }
           }
@@ -490,42 +480,58 @@ const FloorPlan: React.FC = () => {
       // Store reference for later updates
       (svgDoc as any).__updateBoothHighlighting = updateBoothHighlighting;
 
+      // Create a hitbox layer on top of everything for click targets
+      const hitboxGroup = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'g');
+      hitboxGroup.setAttribute('class', 'booth-hitboxes');
+      svg.appendChild(hitboxGroup);
+
+      const processedBoothIds = new Set<string>();
+
       textElements.forEach((textElement) => {
         const textContent = textElement.textContent?.trim();
 
         // Check if this text element contains a booth number (1-2 digits)
         if (textContent && /^\d{1,2}$/.test(textContent)) {
-          // Normalize booth ID: pad single digits with leading zero (e.g., "2" -> "02")
           const boothId = textContent.length === 1 ? `0${textContent}` : textContent;
 
+          // Skip if we already created a hitbox for this booth ID
+          if (processedBoothIds.has(boothId)) return;
+          processedBoothIds.add(boothId);
+
           const handleClick = (e: Event) => {
+            e.preventDefault();
             e.stopPropagation();
 
-            // Check if this booth exists in our data and is available
             const booth = boothsRef.current.find((b) => b.id === boothId);
             if (booth && booth.status === 'available') {
               handleBoothToggleRef.current(boothId);
             }
           };
 
-          textElement.addEventListener('click', handleClick);
-          textElement.style.cursor = 'pointer';
+          // Create a large invisible hitbox rect at the text position
+          try {
+            const bbox = (textElement as SVGTextElement).getBBox();
+            const transform = textElement.getAttribute('transform') || '';
+            const hitboxPadding = 35;
 
-          // Also attach click handler to parent group (booth number + white background)
-          // Navigate up to find the outer group that contains both rect and text
-          let parentGroup = textElement.parentElement;
-          while (parentGroup && parentGroup.tagName.toLowerCase() !== 'svg') {
-            // Check if this group contains a rect sibling (the white background)
-            const siblingRect = parentGroup.querySelector('rect');
-            if (siblingRect) {
-              parentGroup.style.cursor = 'pointer';
-              parentGroup.addEventListener('click', handleClick);
-              // Also make the rect itself clickable
-              siblingRect.style.cursor = 'pointer';
-              siblingRect.addEventListener('click', handleClick);
-              break;
-            }
-            parentGroup = parentGroup.parentElement;
+            const hitbox = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            hitbox.setAttribute('x', String(bbox.x - hitboxPadding));
+            hitbox.setAttribute('y', String(bbox.y - hitboxPadding));
+            hitbox.setAttribute('width', String(bbox.width + hitboxPadding * 2));
+            hitbox.setAttribute('height', String(bbox.height + hitboxPadding * 2));
+            hitbox.setAttribute('rx', '6');
+            hitbox.setAttribute('ry', '6');
+            hitbox.setAttribute('transform', transform);
+            hitbox.setAttribute('fill', 'transparent');
+            hitbox.setAttribute('stroke', 'none');
+            hitbox.style.cursor = 'pointer';
+            hitbox.style.pointerEvents = 'all';
+            hitbox.addEventListener('click', handleClick);
+            hitboxGroup.appendChild(hitbox);
+          } catch {
+            // Fallback: attach to text element directly
+            textElement.addEventListener('click', handleClick);
+            textElement.style.cursor = 'pointer';
           }
         }
       });
@@ -562,14 +568,12 @@ const FloorPlan: React.FC = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update highlighting when category changes
+  // Update highlighting when selection or category changes
   useEffect(() => {
     const container = svgContainerRef.current;
     if (!container) return;
 
-    const objectElement = container.querySelector(
-      'object'
-    ) as HTMLObjectElement;
+    const objectElement = container.querySelector('object') as HTMLObjectElement;
     if (!objectElement) return;
 
     const svgDoc = objectElement.contentDocument;
@@ -676,6 +680,7 @@ const FloorPlan: React.FC = () => {
         isOpen={showBookingModal}
         onClose={() => setShowBookingModal(false)}
         onBook={handleBooking}
+        availablePaymentMethods={paymentMethods}
       />
     </div>
   );
