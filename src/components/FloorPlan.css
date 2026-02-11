@@ -39,11 +39,35 @@
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
-  transition: background-color 0.2s;
+  /* Smoother transition with cubic-bezier */
+  transition: background-color 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.control-buttons button:active {
+  transform: scale(0.98);
 }
 
 .control-buttons button:hover {
   background-color: #0056b3;
+}
+
+.control-buttons .btn-highlight {
+  background-color: #28a745;
+  animation: pulseGlow 2s ease-in-out infinite;
+}
+
+.control-buttons .btn-highlight:hover {
+  background-color: #218838;
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(40, 167, 69, 0);
+  }
 }
 
 .zoom-level {
@@ -94,10 +118,16 @@
   justify-content: center;
   transform-origin: center;
   will-change: transform;
+  /* Enable GPU acceleration for smoother transforms */
+  -webkit-transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .svg-wrapper.smooth-transition {
-  transition: transform 0.1s ease-out;
+  /* Improved easing function for smoother, more natural feel */
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .floor-plan-svg {
@@ -106,6 +136,10 @@
   width: 100%;
   height: auto;
   pointer-events: auto;
+  /* Enable GPU acceleration for SVG rendering */
+  will-change: transform;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
 }
 
 /* Highlight effect for interactive elements */
