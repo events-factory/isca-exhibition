@@ -3,7 +3,6 @@ import {
   Booth,
   BOOTH_CATEGORIES,
   BoothDesign,
-  BOOTH_DESIGNS,
 } from '../types/booth';
 import DesignSelector from './DesignSelector';
 import PaymentModal from './PaymentModal';
@@ -109,15 +108,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
       }));
     }
 
-    const sizePattern = booth.size.match(/(\d+x\d+)/)?.[1];
-    return BOOTH_DESIGNS.filter((design) => {
-      const designPattern = design.size.match(/(\d+)mx(\d+)m/);
-      if (designPattern && sizePattern) {
-        const normalizedDesignSize = `${designPattern[1]}x${designPattern[2]}`;
-        return normalizedDesignSize === sizePattern;
-      }
-      return design.size === booth.size;
-    });
+    // Return empty array if no API banners available
+    return [];
   };
 
   // Calculate total price
@@ -557,7 +549,7 @@ const BookingModal: React.FC<BookingModalProps> = ({
               </div>
 
               <div className="payment-deadline-notice">
-                <div className="notice-icon">⚠️</div>
+                
                 <div className="notice-content">
                   <strong>Important Payment Notice:</strong>
                   <p>

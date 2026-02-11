@@ -257,24 +257,19 @@ const FloorPlan: React.FC = () => {
   // Throttled wheel handler for smooth 60fps performance
   const handleWheelThrottled = useMemo(
     () =>
-      throttle((e: WheelEvent) => {
-        e.preventDefault();
-
-        const container = svgContainerRef.current;
-        if (!container) return;
-
-        const rect = container.getBoundingClientRect();
-        const mouseX = e.clientX - rect.left;
-        const mouseY = e.clientY - rect.top;
+      throttle((deltaY: number, mouseX: number, mouseY: number) => {
+        // Use refs to get current values (prevents stale closures)
+        const currentScale = scaleRef.current;
+        const currentPosition = positionRef.current;
 
         // Calculate zoom with smoother delta
-        const delta = e.deltaY * -0.001;
-        const newScale = Math.min(Math.max(0.5, scale + delta), 5);
+        const delta = deltaY * -0.001;
+        const newScale = Math.min(Math.max(0.5, currentScale + delta), 5);
 
         // Zoom towards mouse position
-        const scaleRatio = newScale / scale;
-        let newX = mouseX - (mouseX - position.x) * scaleRatio;
-        let newY = mouseY - (mouseY - position.y) * scaleRatio;
+        const scaleRatio = newScale / currentScale;
+        let newX = mouseX - (mouseX - currentPosition.x) * scaleRatio;
+        let newY = mouseY - (mouseY - currentPosition.y) * scaleRatio;
 
         // Apply boundary constraints to prevent over-panning
         const maxOffset = 500; // Maximum pan distance in pixels
@@ -288,17 +283,41 @@ const FloorPlan: React.FC = () => {
           setPosition({ x: newX, y: newY });
         });
       }, 16), // 16ms = ~60fps
-    [scale, position.x, position.y]
+    [] // No dependencies needed since we use refs
   );
-
-  const handleWheel = (e: React.WheelEvent) => {
-    handleWheelThrottled(e.nativeEvent);
-  };
 
   // Cleanup throttled function on unmount
   useEffect(() => {
     return () => {
       handleWheelThrottled.cancel();
+    };
+  }, [handleWheelThrottled]);
+
+  // Add native wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const container = svgContainerRef.current;
+    if (!container) return;
+
+    // Native wheel event handler
+    const handleWheelNative = (e: WheelEvent) => {
+      // MUST call preventDefault immediately, before throttling
+      e.preventDefault();
+      e.stopPropagation();
+
+      // Get mouse position
+      const rect = container.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      // Pass data to throttled function
+      handleWheelThrottled(e.deltaY, mouseX, mouseY);
+    };
+
+    // Add listener with passive: false to allow preventDefault
+    container.addEventListener('wheel', handleWheelNative, { passive: false });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheelNative);
     };
   }, [handleWheelThrottled]);
 
@@ -940,7 +959,7 @@ const FloorPlan: React.FC = () => {
                 textElement.classList.add('booth-text-highlight');
                 let bgColor = '#28a745'; // available (green)
                 if (booth.status === 'booked') {
-                  bgColor = '#dc3545'; // red
+                  bgColor = '#8B4789'; // dark purple
                 } else if (booth.status === 'reserved') {
                   bgColor = '#ffc107'; // yellow
                 }
@@ -1165,7 +1184,6 @@ const FloorPlan: React.FC = () => {
         <div
           className="svg-container"
           ref={svgContainerRef}
-          onWheel={handleWheel}
           onContextMenu={handleContextMenu}
           onDoubleClick={handleDoubleClick}
           style={{ cursor: isDragging ? 'grabbing' : 'grab' }}

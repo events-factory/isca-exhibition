@@ -6,6 +6,8 @@
   background-color: #f5f5f5;
   overflow: hidden;
   position: relative; /* Create positioning context */
+  touch-action: none; /* Prevent browser zoom/scroll */
+  overscroll-behavior: none; /* Prevent pull-to-refresh and overscroll */
 }
 
 .controls {
