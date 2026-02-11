@@ -66,7 +66,8 @@ export interface Booth {
   designPrice?: number;
   productCode?: string;
   description?: string;
-  apiProduct?: ApiProduct;
+  apiProduct?: ApiProduct; // Primary matched product (for backward compatibility)
+  apiProducts?: ApiProduct[]; // All products matching this booth size (for multiple designs)
 }
 
 export interface BoothDesign {
