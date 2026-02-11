@@ -1,10 +1,15 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import throttle from 'lodash.throttle';
+import debounce from 'lodash.debounce';
 import { Booth, BoothDesign, INITIAL_BOOTHS, PaymentMethod } from '../types/booth';
 import BookingModal from './BookingModal';
 import Legend from './Legend';
 import BoothList from './BoothList';
 import SelectionBadge from './SelectionBadge';
 import SelectionModal from './SelectionModal';
+import Minimap from './Minimap';
+import BoothTooltip from './BoothTooltip';
+import QuickInfoPanel from './QuickInfoPanel';
 import { fetchExhibitionPackages, fetchProductDetails, fetchBookedBooths } from '../services/api';
 import './FloorPlan.css';
 
@@ -25,7 +30,23 @@ const FloorPlan: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [notification, setNotification] = useState<{ message: string; type: 'error' | 'info' } | null>(null);
+
+  // Tooltip state for hover interactions
+  const [hoveredBooth, setHoveredBooth] = useState<Booth | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+
   const svgContainerRef = useRef<HTMLDivElement>(null);
+
+  // Momentum scrolling state
+  const velocityRef = useRef({ x: 0, y: 0 });
+  const lastDragTimeRef = useRef(0);
+  const lastDragPosRef = useRef({ x: 0, y: 0 });
+  const momentumAnimationRef = useRef<number | null>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  // Ref to track current position (prevents stale closures)
+  const positionRef = useRef(position);
+  const scaleRef = useRef(scale);
 
   // Refs for stable SVG event handlers (prevents duplicate listener issues)
   const selectedBoothsRef = useRef<Booth[]>([]);
@@ -167,6 +188,8 @@ const FloorPlan: React.FC = () => {
   selectedCategoryRef.current = selectedCategory;
   boothsRef.current = booths;
   handleBoothToggleRef.current = handleBoothToggle;
+  positionRef.current = position;
+  scaleRef.current = scale;
 
   // Remove a specific booth from selection
   const handleRemoveBooth = useCallback((boothId: string) => {
@@ -231,38 +254,149 @@ const FloorPlan: React.FC = () => {
     [clearSelections]
   );
 
+  // Throttled wheel handler for smooth 60fps performance
+  const handleWheelThrottled = useMemo(
+    () =>
+      throttle((e: WheelEvent) => {
+        e.preventDefault();
+
+        const container = svgContainerRef.current;
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        // Calculate zoom with smoother delta
+        const delta = e.deltaY * -0.001;
+        const newScale = Math.min(Math.max(0.5, scale + delta), 5);
+
+        // Zoom towards mouse position
+        const scaleRatio = newScale / scale;
+        let newX = mouseX - (mouseX - position.x) * scaleRatio;
+        let newY = mouseY - (mouseY - position.y) * scaleRatio;
+
+        // Apply boundary constraints to prevent over-panning
+        const maxOffset = 500; // Maximum pan distance in pixels
+        const minOffset = -500;
+        newX = Math.min(Math.max(newX, minOffset), maxOffset);
+        newY = Math.min(Math.max(newY, minOffset), maxOffset);
+
+        // Use requestAnimationFrame for smooth updates
+        requestAnimationFrame(() => {
+          setScale(newScale);
+          setPosition({ x: newX, y: newY });
+        });
+      }, 16), // 16ms = ~60fps
+    [scale, position.x, position.y]
+  );
+
   const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-
-    // Get the mouse position relative to the container
-    const container = svgContainerRef.current;
-    if (!container) return;
-
-    const rect = container.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
-    // Calculate zoom
-    const delta = e.deltaY * -0.001;
-    const newScale = Math.min(Math.max(0.5, scale + delta), 5);
-
-    // Zoom towards mouse position
-    const scaleRatio = newScale / scale;
-    const newX = mouseX - (mouseX - position.x) * scaleRatio;
-    const newY = mouseY - (mouseY - position.y) * scaleRatio;
-
-    setScale(newScale);
-    setPosition({ x: newX, y: newY });
+    handleWheelThrottled(e.nativeEvent);
   };
+
+  // Cleanup throttled function on unmount
+  useEffect(() => {
+    return () => {
+      handleWheelThrottled.cancel();
+    };
+  }, [handleWheelThrottled]);
+
+  // Momentum scrolling: Apply physics-based deceleration
+  const applyMomentum = useCallback(() => {
+    const friction = 0.92; // Deceleration factor (0-1, lower = more friction)
+    const minVelocity = 0.1; // Stop when velocity is very small
+
+    setIsAnimating(true);
+
+    const animate = () => {
+      const currentVelocity = velocityRef.current;
+
+      // Apply friction
+      currentVelocity.x *= friction;
+      currentVelocity.y *= friction;
+
+      // Stop if velocity is too small
+      if (Math.abs(currentVelocity.x) < minVelocity && Math.abs(currentVelocity.y) < minVelocity) {
+        velocityRef.current = { x: 0, y: 0 };
+        momentumAnimationRef.current = null;
+        setIsAnimating(false);
+        return;
+      }
+
+      // Update position with boundary constraints
+      setPosition((prev) => {
+        const maxOffset = 500;
+        const minOffset = -500;
+        const newX = Math.min(Math.max(prev.x + currentVelocity.x, minOffset), maxOffset);
+        const newY = Math.min(Math.max(prev.y + currentVelocity.y, minOffset), maxOffset);
+        return { x: newX, y: newY };
+      });
+
+      // Continue animation
+      momentumAnimationRef.current = requestAnimationFrame(animate);
+    };
+
+    // Start animation
+    if (momentumAnimationRef.current) {
+      cancelAnimationFrame(momentumAnimationRef.current);
+    }
+    momentumAnimationRef.current = requestAnimationFrame(animate);
+  }, []);
+
+  // Stop momentum scrolling
+  const stopMomentum = useCallback(() => {
+    if (momentumAnimationRef.current) {
+      cancelAnimationFrame(momentumAnimationRef.current);
+      momentumAnimationRef.current = null;
+    }
+    velocityRef.current = { x: 0, y: 0 };
+    setIsAnimating(false);
+  }, []);
 
   // Note: Mouse and touch drag handlers are now managed within the SVG document itself
   // (see the useEffect that loads the SVG). This prevents conflicts and allows
   // dragging from anywhere within the SVG while keeping booth selection functional.
 
   const resetView = () => {
-    setScale(1);
-    setPosition({ x: 0, y: 0 });
+    stopMomentum();
+    requestAnimationFrame(() => {
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
+    });
   };
+
+  // Smart Zoom: Zoom to fit entire floor plan
+  const zoomToFit = useCallback(() => {
+    stopMomentum();
+    requestAnimationFrame(() => {
+      setScale(1);
+      setPosition({ x: 0, y: 0 });
+    });
+  }, [stopMomentum]);
+
+  // Smart Zoom: Zoom to selected booths
+  const zoomToSelection = useCallback(() => {
+    if (selectedBooths.length === 0) return;
+
+    stopMomentum();
+
+    // Calculate bounding box of selected booth IDs
+    // For simplicity, we'll zoom to scale 2 and center on first selected booth
+    // In a real implementation, you'd calculate actual booth positions from SVG
+    requestAnimationFrame(() => {
+      setScale(2);
+      setPosition({ x: 0, y: 0 });
+    });
+  }, [selectedBooths, stopMomentum]);
+
+  // Handle minimap navigation
+  const handleMinimapNavigate = useCallback((x: number, y: number) => {
+    stopMomentum();
+    requestAnimationFrame(() => {
+      setPosition({ x, y });
+    });
+  }, [stopMomentum]);
 
   const handleCategoryClick = (categoryId: number) => {
     setSelectedCategory(selectedCategory === categoryId ? null : categoryId);
@@ -270,6 +404,37 @@ const FloorPlan: React.FC = () => {
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault(); // Prevent context menu when dragging
+  };
+
+  // Double-click to zoom in/out
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    const container = svgContainerRef.current;
+    if (!container) return;
+
+    stopMomentum();
+
+    const rect = container.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Toggle between 1x and 2x zoom
+    const newScale = scale < 1.5 ? 2 : 1;
+    const scaleRatio = newScale / scale;
+
+    // Zoom towards double-click position
+    const newX = mouseX - (mouseX - position.x) * scaleRatio;
+    const newY = mouseY - (mouseY - position.y) * scaleRatio;
+
+    // Apply boundary constraints
+    const maxOffset = 500;
+    const minOffset = -500;
+    const constrainedX = Math.min(Math.max(newX, minOffset), maxOffset);
+    const constrainedY = Math.min(Math.max(newY, minOffset), maxOffset);
+
+    requestAnimationFrame(() => {
+      setScale(newScale);
+      setPosition({ x: constrainedX, y: constrainedY });
+    });
   };
 
   // Keyboard shortcuts
@@ -342,8 +507,18 @@ const FloorPlan: React.FC = () => {
         // Otherwise, start dragging from here
         e.preventDefault();
         e.stopPropagation();
+
+        // Stop any ongoing momentum
+        stopMomentum();
+
         svgIsDragging = true;
-        svgDragStart = { x: e.clientX - position.x, y: e.clientY - position.y };
+        // Use ref to get current position (prevents stale closure)
+        svgDragStart = { x: e.clientX - positionRef.current.x, y: e.clientY - positionRef.current.y };
+
+        // Track for velocity calculation
+        lastDragTimeRef.current = Date.now();
+        lastDragPosRef.current = { x: e.clientX, y: e.clientY };
+
         setIsDragging(true);
         svg.style.cursor = 'grabbing';
       };
@@ -351,10 +526,31 @@ const FloorPlan: React.FC = () => {
       const handleSvgMouseMove = (e: MouseEvent) => {
         if (svgIsDragging) {
           e.preventDefault();
-          setPosition({
-            x: e.clientX - svgDragStart.x,
-            y: e.clientY - svgDragStart.y,
-          });
+
+          // Calculate velocity for momentum
+          const currentTime = Date.now();
+          const deltaTime = currentTime - lastDragTimeRef.current;
+
+          if (deltaTime > 0) {
+            const deltaX = e.clientX - lastDragPosRef.current.x;
+            const deltaY = e.clientY - lastDragPosRef.current.y;
+
+            velocityRef.current = {
+              x: deltaX / deltaTime * 16, // Normalize to 60fps
+              y: deltaY / deltaTime * 16,
+            };
+
+            lastDragTimeRef.current = currentTime;
+            lastDragPosRef.current = { x: e.clientX, y: e.clientY };
+          }
+
+          // Direct position update (no RAF) for instant feedback
+          const maxOffset = 500;
+          const minOffset = -500;
+          const newX = Math.min(Math.max(e.clientX - svgDragStart.x, minOffset), maxOffset);
+          const newY = Math.min(Math.max(e.clientY - svgDragStart.y, minOffset), maxOffset);
+
+          setPosition({ x: newX, y: newY });
         }
       };
 
@@ -363,12 +559,18 @@ const FloorPlan: React.FC = () => {
           svgIsDragging = false;
           setIsDragging(false);
           svg.style.cursor = 'grab';
+
+          // Apply momentum if velocity is significant
+          const speed = Math.sqrt(
+            velocityRef.current.x ** 2 + velocityRef.current.y ** 2
+          );
+          if (speed > 1) {
+            applyMomentum();
+          }
         }
       };
 
       const handleSvgTouchStart = (e: TouchEvent) => {
-        if (e.touches.length !== 1) return;
-
         const target = e.target as Element;
 
         // Check if touch is on a booth element
@@ -382,31 +584,139 @@ const FloorPlan: React.FC = () => {
           return;
         }
 
-        // Otherwise, start dragging
-        e.preventDefault();
-        e.stopPropagation();
-        svgIsDragging = true;
-        svgDragStart = {
-          x: e.touches[0].clientX - position.x,
-          y: e.touches[0].clientY - position.y,
-        };
-        setIsDragging(true);
-      };
-
-      const handleSvgTouchMove = (e: TouchEvent) => {
-        if (e.touches.length === 1 && svgIsDragging) {
+        // Handle pinch-to-zoom (two fingers)
+        if (e.touches.length === 2) {
           e.preventDefault();
-          setPosition({
-            x: e.touches[0].clientX - svgDragStart.x,
-            y: e.touches[0].clientY - svgDragStart.y,
-          });
+          e.stopPropagation();
+          stopMomentum();
+
+          const touch1 = e.touches[0];
+          const touch2 = e.touches[1];
+          const distance = Math.sqrt(
+            (touch2.clientX - touch1.clientX) ** 2 +
+            (touch2.clientY - touch1.clientY) ** 2
+          );
+
+          // Store initial pinch distance
+          (svg as any).__pinchStartDistance = distance;
+          (svg as any).__pinchStartScale = scaleRef.current;
+          return;
+        }
+
+        // Single touch - start dragging
+        if (e.touches.length === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          stopMomentum();
+
+          svgIsDragging = true;
+          // Use ref to get current position (prevents stale closure)
+          svgDragStart = {
+            x: e.touches[0].clientX - positionRef.current.x,
+            y: e.touches[0].clientY - positionRef.current.y,
+          };
+
+          // Track for velocity
+          lastDragTimeRef.current = Date.now();
+          lastDragPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
+          setIsDragging(true);
         }
       };
 
-      const handleSvgTouchEnd = () => {
+      const handleSvgTouchMove = (e: TouchEvent) => {
+        // Handle pinch-to-zoom
+        if (e.touches.length === 2 && (svg as any).__pinchStartDistance) {
+          e.preventDefault();
+
+          const touch1 = e.touches[0];
+          const touch2 = e.touches[1];
+          const currentDistance = Math.sqrt(
+            (touch2.clientX - touch1.clientX) ** 2 +
+            (touch2.clientY - touch1.clientY) ** 2
+          );
+
+          const pinchStartDistance = (svg as any).__pinchStartDistance;
+          const pinchStartScale = (svg as any).__pinchStartScale || scaleRef.current;
+
+          // Calculate new scale
+          const scaleChange = currentDistance / pinchStartDistance;
+          const newScale = Math.min(Math.max(pinchStartScale * scaleChange, 0.5), 5);
+
+          // Get center point between two touches
+          const centerX = (touch1.clientX + touch2.clientX) / 2;
+          const centerY = (touch1.clientY + touch2.clientY) / 2;
+
+          const container = svgContainerRef.current;
+          if (container) {
+            const rect = container.getBoundingClientRect();
+            const mouseX = centerX - rect.left;
+            const mouseY = centerY - rect.top;
+
+            // Zoom towards pinch center (use current ref values)
+            const currentScale = scaleRef.current;
+            const currentPos = positionRef.current;
+            const scaleRatio = newScale / currentScale;
+            const newX = mouseX - (mouseX - currentPos.x) * scaleRatio;
+            const newY = mouseY - (mouseY - currentPos.y) * scaleRatio;
+
+            // Direct update for instant feedback
+            setScale(newScale);
+            setPosition({ x: newX, y: newY });
+          }
+          return;
+        }
+
+        // Single touch drag
+        if (e.touches.length === 1 && svgIsDragging) {
+          e.preventDefault();
+
+          // Calculate velocity
+          const currentTime = Date.now();
+          const deltaTime = currentTime - lastDragTimeRef.current;
+
+          if (deltaTime > 0) {
+            const deltaX = e.touches[0].clientX - lastDragPosRef.current.x;
+            const deltaY = e.touches[0].clientY - lastDragPosRef.current.y;
+
+            velocityRef.current = {
+              x: deltaX / deltaTime * 16,
+              y: deltaY / deltaTime * 16,
+            };
+
+            lastDragTimeRef.current = currentTime;
+            lastDragPosRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+          }
+
+          // Direct position update (no RAF) for instant feedback
+          const maxOffset = 500;
+          const minOffset = -500;
+          const newX = Math.min(Math.max(e.touches[0].clientX - svgDragStart.x, minOffset), maxOffset);
+          const newY = Math.min(Math.max(e.touches[0].clientY - svgDragStart.y, minOffset), maxOffset);
+
+          setPosition({ x: newX, y: newY });
+        }
+      };
+
+      const handleSvgTouchEnd = (e: TouchEvent) => {
+        // Clear pinch state
+        if ((svg as any).__pinchStartDistance) {
+          delete (svg as any).__pinchStartDistance;
+          delete (svg as any).__pinchStartScale;
+        }
+
         if (svgIsDragging) {
           svgIsDragging = false;
           setIsDragging(false);
+
+          // Apply momentum if velocity is significant
+          const speed = Math.sqrt(
+            velocityRef.current.x ** 2 + velocityRef.current.y ** 2
+          );
+          if (speed > 1 && e.touches.length === 0) {
+            applyMomentum();
+          }
         }
       };
 
@@ -555,7 +865,8 @@ const FloorPlan: React.FC = () => {
         }
       });
 
-      const updateBoothHighlighting = () => {
+      // Debounced booth highlighting for better performance
+      const updateBoothHighlightingImmediate = () => {
         // Remove all previously created dynamic highlight rects
         svgDoc.querySelectorAll('.booth-dynamic-highlight').forEach((el: Element) => el.remove());
 
@@ -642,6 +953,9 @@ const FloorPlan: React.FC = () => {
         });
       };
 
+      // Create debounced version for performance (150ms delay)
+      const updateBoothHighlighting = debounce(updateBoothHighlightingImmediate, 150);
+
       // Store reference for later updates
       (svgDoc as any).__updateBoothHighlighting = updateBoothHighlighting;
 
@@ -672,6 +986,24 @@ const FloorPlan: React.FC = () => {
             handleBoothToggleRef.current(boothId);
           };
 
+          const handleMouseEnter = (e: MouseEvent) => {
+            const booth = boothsRef.current.find((b) => b.id === boothId);
+            if (booth) {
+              setHoveredBooth(booth);
+              setTooltipPosition({ x: e.clientX, y: e.clientY });
+            }
+          };
+
+          const handleMouseMove = (e: MouseEvent) => {
+            if (hoveredBooth) {
+              setTooltipPosition({ x: e.clientX, y: e.clientY });
+            }
+          };
+
+          const handleMouseLeave = () => {
+            setHoveredBooth(null);
+          };
+
           // Create a large invisible hitbox rect at the text position
           try {
             const bbox = (textElement as SVGTextElement).getBBox();
@@ -691,10 +1023,16 @@ const FloorPlan: React.FC = () => {
             hitbox.style.cursor = 'pointer';
             hitbox.style.pointerEvents = 'all';
             hitbox.addEventListener('click', handleClick);
+            hitbox.addEventListener('mouseenter', handleMouseEnter);
+            hitbox.addEventListener('mousemove', handleMouseMove);
+            hitbox.addEventListener('mouseleave', handleMouseLeave);
             hitboxGroup.appendChild(hitbox);
           } catch {
             // Fallback: attach to text element directly
             textElement.addEventListener('click', handleClick);
+            textElement.addEventListener('mouseenter', handleMouseEnter);
+            textElement.addEventListener('mousemove', handleMouseMove);
+            textElement.addEventListener('mouseleave', handleMouseLeave);
             textElement.style.cursor = 'pointer';
           }
         }
@@ -800,6 +1138,14 @@ const FloorPlan: React.FC = () => {
             Zoom Out
           </button>
           <button onClick={resetView}>Reset View</button>
+          <button onClick={zoomToFit} title="Fit entire floor plan in view">
+            Fit to View
+          </button>
+          {selectedBooths.length > 0 && (
+            <button onClick={zoomToSelection} title="Zoom to selected booths" className="btn-highlight">
+              Zoom to Selection ({selectedBooths.length})
+            </button>
+          )}
           <span className="zoom-level">Zoom: {Math.round(scale * 100)}%</span>
           <span className="keyboard-hint" title="Keyboard shortcuts: +/- to zoom, 0 or R to reset">
             ⌨️
@@ -821,12 +1167,13 @@ const FloorPlan: React.FC = () => {
           ref={svgContainerRef}
           onWheel={handleWheel}
           onContextMenu={handleContextMenu}
+          onDoubleClick={handleDoubleClick}
           style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
         >
           <div
-            className={`svg-wrapper ${!isDragging ? 'smooth-transition' : ''}`}
+            className={`svg-wrapper ${!isDragging && !isAnimating ? 'smooth-transition' : ''}`}
             style={{
-              transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
+              transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale})`,
             }}
           >
             <object
@@ -842,6 +1189,23 @@ const FloorPlan: React.FC = () => {
         <Legend
           selectedCategory={selectedCategory}
           onCategoryClick={handleCategoryClick}
+        />
+
+        {/* Minimap */}
+        <Minimap
+          scale={scale}
+          position={position}
+          containerWidth={svgContainerRef.current?.clientWidth || 800}
+          containerHeight={svgContainerRef.current?.clientHeight || 600}
+          onNavigate={handleMinimapNavigate}
+        />
+
+        {/* Quick Info Panel - always visible when booths are selected */}
+        <QuickInfoPanel
+          selectedBooths={selectedBooths}
+          totalPrice={totalPrice}
+          onRemoveBooth={handleRemoveBooth}
+          onClearAll={clearSelections}
         />
       </div>
 
@@ -870,6 +1234,14 @@ const FloorPlan: React.FC = () => {
         onClose={() => setShowBookingModal(false)}
         onBook={handleBooking}
         availablePaymentMethods={paymentMethods}
+      />
+
+      {/* Booth Tooltip - shows on hover */}
+      <BoothTooltip
+        booth={hoveredBooth}
+        x={tooltipPosition.x}
+        y={tooltipPosition.y}
+        visible={hoveredBooth !== null}
       />
     </div>
   );
