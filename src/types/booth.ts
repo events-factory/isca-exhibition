@@ -139,14 +139,14 @@ export const BOOTH_CATEGORIES: BoothCategory[] = [
 
 // Booth data matching the ISCA 2026 Exhibition Floor Plan
 export const INITIAL_BOOTHS: Booth[] = [
-  // Foyer 1A - Category 4 (9mx3m, Green)
-  { id: '01', category: 4, size: '9mx3m', status: 'available', location: 'Foyer 1A' },
-  { id: '02', category: 4, size: '9mx3m', status: 'available', location: 'Foyer 1A' },
-  { id: '03', category: 4, size: '9mx3m', status: 'available', location: 'Foyer 1C' },
+  // Foyer 1A - Category 4 (9mx3m, Green) - BOOKED BY DEFAULT
+  { id: '01', category: 4, size: '9mx3m', status: 'booked', location: 'Foyer 1A', bookedBy: 'Reserved' },
+  { id: '02', category: 4, size: '9mx3m', status: 'booked', location: 'Foyer 1A', bookedBy: 'Reserved' },
+  { id: '03', category: 4, size: '9mx3m', status: 'booked', location: 'Foyer 1C', bookedBy: 'Reserved' },
 
-  // Foyer 1C
-  { id: '04', category: 4, size: '9mx3m', status: 'available', location: 'Foyer 1C' },
-  { id: '05', category: 4, size: '9mx3m', status: 'available', location: "No Man's Land" },
+  // Foyer 1C - BOOKED BY DEFAULT
+  { id: '04', category: 4, size: '9mx3m', status: 'booked', location: 'Foyer 1C', bookedBy: 'Reserved' },
+  { id: '05', category: 4, size: '9mx3m', status: 'booked', location: "No Man's Land", bookedBy: 'Reserved' },
   
 
   // No Man's Land - Category 3 (6mx3m, Orange)
@@ -208,171 +208,4 @@ export const INITIAL_BOOTHS: Booth[] = [
   { id: '52', category: 3, size: '6mx3m', status: 'available', location: 'Roundabout Tent' },
   { id: '53', category: 3, size: '6mx3m', status: 'available', location: 'Roundabout Tent' },
   { id: '54', category: 5, size: '12mx3m', status: 'available', location: 'Roundabout Tent' },
-];
-
-// Booth designs with pricing
-export const BOOTH_DESIGNS: BoothDesign[] = [
-  // 3x2 designs
-  {
-    id: '3x2-1',
-    name: 'Compact Design 1',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07.jpeg',
-    price: 2500,
-    description: 'Perfect for small displays',
-  },
-  {
-    id: '3x2-2',
-    name: 'Compact Design 2',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (1).jpeg',
-    price: 2600,
-    description: 'Modern minimalist layout',
-  },
-  {
-    id: '3x2-3',
-    name: 'Compact Design 3',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (2).jpeg',
-    price: 2700,
-    description: 'Professional corner booth',
-  },
-  {
-    id: '3x2-4',
-    name: 'Compact Design 4',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (3).jpeg',
-    price: 2800,
-    description: 'Elegant presentation space',
-  },
-  {
-    id: '3x2-5',
-    name: 'Compact Design 5',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (4).jpeg',
-    price: 2900,
-    description: 'Contemporary style booth',
-  },
-  {
-    id: '3x2-6',
-    name: 'Compact Design 6',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (5).jpeg',
-    price: 3000,
-    description: 'Premium compact design',
-  },
-  {
-    id: '3x2-7',
-    name: 'Compact Design 7',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (6).jpeg',
-    price: 3100,
-    description: 'Dynamic layout option',
-  },
-  {
-    id: '3x2-8',
-    name: 'Compact Design 8',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (7).jpeg',
-    price: 3200,
-    description: 'Versatile booth setup',
-  },
-  {
-    id: '3x2-9',
-    name: 'Compact Design 9',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (8).jpeg',
-    price: 3300,
-    description: 'Stylish presentation area',
-  },
-  {
-    id: '3x2-10',
-    name: 'Compact Design 10',
-    size: '3mx2m',
-    imagePath: '/3x2/WhatsApp Image 2025-12-04 at 12.10.07 (9).jpeg',
-    price: 3400,
-    description: 'Premium corner configuration',
-  },
-
-  // 3x3 designs
-  {
-    id: '3x3-1',
-    name: 'Standard Design 1',
-    size: '3mx3m',
-    imagePath: '/3x3/WhatsApp Image 2025-12-04 at 12.12.19.jpeg',
-    price: 4500,
-    description: 'Classic exhibition booth',
-  },
-  {
-    id: '3x3-2',
-    name: 'Standard Design 2',
-    size: '3mx3m',
-    imagePath: '/3x3/WhatsApp Image 2025-12-04 at 12.12.19-1.jpeg',
-    price: 4800,
-    description: 'Professional standard space',
-  },
-
-  // 6x3 designs
-  {
-    id: '6x3-1',
-    name: 'Large Design 1',
-    size: '6mx3m',
-    imagePath: '/6x3/WhatsApp Image 2025-12-04 at 12.13.44.jpeg',
-    price: 7500,
-    description: 'Spacious exhibition area',
-  },
-  {
-    id: '6x3-2',
-    name: 'Large Design 2',
-    size: '6mx3m',
-    imagePath: '/6x3/WhatsApp Image 2025-12-04 at 12.13.44 (1).jpeg',
-    price: 7800,
-    description: 'Premium large booth',
-  },
-  {
-    id: '6x3-3',
-    name: 'Large Design 3',
-    size: '6mx3m',
-    imagePath: '/6x3/WhatsApp Image 2025-12-04 at 12.13.44 (2).jpeg',
-    price: 8100,
-    description: 'Deluxe exhibition space',
-  },
-  {
-    id: '6x3-4',
-    name: 'Large Design 4',
-    size: '6mx3m',
-    imagePath: '/6x3/WhatsApp Image 2025-12-04 at 12.13.44 (3).jpeg',
-    price: 8400,
-    description: 'Executive booth layout',
-  },
-
-  // 9x3 designs (add placeholder prices)
-  {
-    id: '9x3-1',
-    name: 'Extra Large Design 1',
-    size: '9mx3m',
-    imagePath: '/9x3/design-1.jpeg',
-    price: 11000,
-    description: 'Expansive exhibition space',
-  },
-
-  // 10x10 designs (add placeholder prices)
-  {
-    id: '10x10-1',
-    name: 'Premium Island Design 1',
-    size: '10mx10m',
-    imagePath: '/10x10/design-1.jpeg',
-    price: 25000,
-    description: 'Island booth configuration',
-  },
-
-  // 12x3 designs (add placeholder prices)
-  {
-    id: '12x3-1',
-    name: 'Mega Design 1',
-    size: '12mx3m',
-    imagePath: '/12x3/design-1.jpeg',
-    price: 15000,
-    description: 'Maximum exhibition impact',
-  },
 ];
