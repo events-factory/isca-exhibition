@@ -64,8 +64,17 @@ const FloorPlan: React.FC = () => {
 
         // Transform API products into booth format
         if (data.products && data.products.length > 0) {
-          // Build a size-to-product map for matching booths by size category
-          const sizeToProduct = new Map<string, typeof data.products[0]>();
+          console.log('📦 Total products from API:', data.products.length);
+          console.log('📦 All products:', data.products.map(p => ({
+            name: p.name_english,
+            size: p.sizes,
+            code: p.product_code,
+            banner: p.banner ? 'YES' : 'NO'
+          })));
+
+          // Build a size-to-products map for matching booths by size category
+          // Now supports MULTIPLE products per size (for multiple design options)
+          const sizeToProducts = new Map<string, typeof data.products>();
           for (const product of data.products) {
             // Extract size pattern from product sizes (e.g., "2m*3m" -> "3x2", "3m*3m" -> "3x3")
             const sizeMatch = product.sizes?.match(/(\d+)m?\*(\d+)m?/);
@@ -74,37 +83,64 @@ const FloorPlan: React.FC = () => {
               // Normalize: larger dimension first (e.g., "2m*3m" -> "3x2")
               const a = Math.max(Number(w), Number(h));
               const b = Math.min(Number(w), Number(h));
-              sizeToProduct.set(`${a}x${b}`, product);
+              const sizeKey = `${a}x${b}`;
+
+              // Add product to array for this size
+              if (!sizeToProducts.has(sizeKey)) {
+                sizeToProducts.set(sizeKey, []);
+              }
+              sizeToProducts.get(sizeKey)!.push(product);
             }
           }
 
+          console.log('🗺️ Size to Products Map:');
+          sizeToProducts.forEach((products, size) => {
+            console.log(`  Size ${size}: ${products.length} product(s)`,
+              products.map(p => p.name_english));
+          });
+
           const enrichedBooths = INITIAL_BOOTHS.map((booth) => {
-            // Try booth_numbers matching first
-            let matchedProduct = data.products.find(
+            // Try booth_numbers matching first (exact booth assignment)
+            const directMatches = data.products.filter(
               (product) =>
                 product.booth_numbers &&
                 Array.isArray(product.booth_numbers) &&
                 product.booth_numbers.includes(booth.id)
             );
 
+            let matchedProducts = directMatches.length > 0 ? directMatches : [];
+
             // Fallback: match by booth size (e.g., "3mx2m" -> "3x2")
-            if (!matchedProduct) {
+            if (matchedProducts.length === 0) {
               const boothSizeMatch = booth.size.match(/(\d+)mx(\d+)m/);
               if (boothSizeMatch) {
                 const a = Math.max(Number(boothSizeMatch[1]), Number(boothSizeMatch[2]));
                 const b = Math.min(Number(boothSizeMatch[1]), Number(boothSizeMatch[2]));
-                matchedProduct = sizeToProduct.get(`${a}x${b}`);
+                const sizeProducts = sizeToProducts.get(`${a}x${b}`);
+                if (sizeProducts) {
+                  matchedProducts = sizeProducts;
+                }
               }
             }
 
-            if (matchedProduct) {
-              const price = parseFloat(matchedProduct.prices);
+            if (matchedProducts.length > 0) {
+              // Use first product as primary (for backward compatibility)
+              const primaryProduct = matchedProducts[0];
+              const price = parseFloat(primaryProduct.prices);
+
+              // Debug log for booth 15 (3mx2m)
+              if (booth.id === '15') {
+                console.log(`🎯 Booth ${booth.id} (${booth.size}): Found ${matchedProducts.length} product(s)`,
+                  matchedProducts.map(p => p.name_english));
+              }
+
               return {
                 ...booth,
                 price: isNaN(price) ? booth.price : price,
-                productCode: matchedProduct.product_code,
-                description: matchedProduct.description_english,
-                apiProduct: matchedProduct,
+                productCode: primaryProduct.product_code,
+                description: primaryProduct.description_english,
+                apiProduct: primaryProduct, // Primary product
+                apiProducts: matchedProducts, // All matching products (for multiple designs)
               };
             }
 
@@ -247,6 +283,17 @@ const FloorPlan: React.FC = () => {
           return booth;
         })
       );
+
+      // Show success notification
+      const boothText = boothIds.length === 1 ? `Booth ${boothIds[0]}` : `${boothIds.length} booths`;
+      setNotification({
+        message: `Success! ${boothText} booked for ${customerName}`,
+        type: 'info'
+      });
+
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => setNotification(null), 5000);
+
       // Clear selections after booking
       clearSelections();
       setShowBookingModal(false);
@@ -1261,6 +1308,22 @@ const FloorPlan: React.FC = () => {
         y={tooltipPosition.y}
         visible={hoveredBooth !== null}
       />
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className={`notification-toast ${notification.type}`}>
+          <div className="notification-content">
+            <span className="notification-message">{notification.message}</span>
+            <button
+              className="notification-close"
+              onClick={() => setNotification(null)}
+              aria-label="Close notification"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
