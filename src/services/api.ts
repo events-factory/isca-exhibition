@@ -64,6 +64,67 @@ export const fetchProductDetails = async (productId: string): Promise<any> => {
 };
 
 /**
+ * Fetch booked booth numbers for a product
+ * @param productCode - Product code to fetch bookings for
+ * @returns Promise with array of booked booth numbers
+ */
+export interface BookingRecord {
+  [index: number]: string;
+}
+
+export interface BookingsResponse {
+  message: string;
+  draw: number;
+  recordsTotal: number;
+  recordsFiltered: number;
+  data: BookingRecord[];
+}
+
+export const fetchBookedBooths = async (productCode: string): Promise<string[]> => {
+  try {
+    const url = `${API_BASE_URL}/Get-Exhibition-Bookings/GetBookings/${productCode}?draw=1&start=0&length=1000`;
+    console.log('Fetching bookings for product code:', productCode);
+    console.log('Booking URL:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      credentials: 'include', // Include cookies for authentication
+    });
+
+    console.log('Booking response status:', response.status);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data: BookingsResponse = await response.json();
+    console.log('Booking response data:', data);
+
+    // Extract booth numbers from booking records
+    // Booth numbers are in the format "06,07,08" at index 14 of each record
+    const bookedBooths: string[] = [];
+
+    if (data.data && Array.isArray(data.data)) {
+      data.data.forEach((record) => {
+        const boothNumbersString = record[14]; // Index 14 contains booth numbers
+        if (boothNumbersString && typeof boothNumbersString === 'string') {
+          // Handle both single booth numbers and comma-separated lists
+          // e.g., "06" or "06,07,08"
+          const booths = boothNumbersString.split(',').map(b => b.trim()).filter(b => b);
+          bookedBooths.push(...booths);
+        }
+      });
+    }
+
+    console.log('Extracted booked booth numbers:', bookedBooths);
+    return bookedBooths;
+  } catch (error) {
+    console.error('Error fetching booked booths:', error);
+    return []; // Return empty array on error, don't block the app
+  }
+};
+
+/**
  * Helper function to map size string to category number
  * @param size - Size string like "3x2m 6sqm"
  * @returns Category number 1-6
@@ -128,8 +189,8 @@ export const submitBooking = async (
     data.append('quantity', formData.quantity);
     data.append('payment_method', formData.payment_method);
 
-    // Add booth numbers as JSON array
-    data.append('booth_numbers', JSON.stringify(formData.booth_numbers));
+    // Add booth numbers as comma-separated string (backend expects string, not array)
+    data.append('booth_numbers', formData.booth_numbers.join(','));
 
     data.append('field_name', 'exhibition_email_english');
     data.append('application', 'exhibition');
@@ -188,6 +249,10 @@ export const validatePaymentMethod = async (
     data.append('message', formData.message || '');
     data.append('quantity', formData.quantity);
     data.append('payment_method', formData.payment_method);
+
+    // Add booth numbers as comma-separated string (backend expects string, not array)
+    data.append('booth_numbers', formData.booth_numbers.join(','));
+
     data.append('event_code', EVENT_CODE);
     data.append('field_name', 'exhibition_email_english');
     data.append('application', 'exhibition');
