@@ -2,7 +2,7 @@
   "name": "exhibition-management",
   "version": "0.1.0",
   "private": true,
-  "proxy": "https://sandbox.smartevent.rw",
+  "proxy": "https://app.smartevent.rw",
   "dependencies": {
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.45",

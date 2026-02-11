@@ -5,7 +5,7 @@ import Legend from './Legend';
 import BoothList from './BoothList';
 import SelectionBadge from './SelectionBadge';
 import SelectionModal from './SelectionModal';
-import { fetchExhibitionPackages, fetchProductDetails } from '../services/api';
+import { fetchExhibitionPackages, fetchProductDetails, fetchBookedBooths } from '../services/api';
 import './FloorPlan.css';
 
 const FloorPlan: React.FC = () => {
@@ -21,11 +21,10 @@ const FloorPlan: React.FC = () => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [lastTouchDistance, setLastTouchDistance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [notification, setNotification] = useState<{ message: string; type: 'error' | 'info' } | null>(null);
   const svgContainerRef = useRef<HTMLDivElement>(null);
 
   // Refs for stable SVG event handlers (prevents duplicate listener issues)
@@ -91,7 +90,25 @@ const FloorPlan: React.FC = () => {
             return booth;
           });
 
-          setBooths(enrichedBooths);
+          // Fetch booked booth numbers and mark them as booked
+          // Using the specific product code for this exhibition
+          const productCode = '69380b3a0c253';
+
+          const bookedBoothNumbers = await fetchBookedBooths(productCode);
+          console.log('Booked booths from API:', bookedBoothNumbers);
+
+          // Update booth status for booked booths
+          const boothsWithBookingStatus = enrichedBooths.map((booth) => {
+            if (bookedBoothNumbers.includes(booth.id)) {
+              return {
+                ...booth,
+                status: 'booked' as const,
+              };
+            }
+            return booth;
+          });
+
+          setBooths(boothsWithBookingStatus);
 
           // Fetch payment methods from first product's details endpoint
           const firstProductId = data.products[0].id;
@@ -121,7 +138,19 @@ const FloorPlan: React.FC = () => {
   const handleBoothToggle = useCallback(
     (boothId: string) => {
       const booth = booths.find((b) => b.id === boothId);
-      if (!booth || booth.status !== 'available') return;
+
+      if (!booth) return;
+
+      // Show notification if booth is not available
+      if (booth.status !== 'available') {
+        setNotification({
+          message: `Booth ${boothId} has already been taken`,
+          type: 'error'
+        });
+        // Auto-hide after 3 seconds
+        setTimeout(() => setNotification(null), 3000);
+        return;
+      }
 
       setSelectedBooths((prev) => {
         const exists = prev.find((b) => b.id === boothId);
@@ -226,92 +255,9 @@ const FloorPlan: React.FC = () => {
     setPosition({ x: newX, y: newY });
   };
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (e.button === 0) {
-      // Left mouse button
-      setIsDragging(true);
-      setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (isDragging) {
-      setPosition({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y,
-      });
-    }
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Touch event handlers for mobile
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (e.touches.length === 1) {
-      // Single touch - start dragging
-      setIsDragging(true);
-      setDragStart({
-        x: e.touches[0].clientX - position.x,
-        y: e.touches[0].clientY - position.y,
-      });
-    } else if (e.touches.length === 2) {
-      // Two fingers - prepare for pinch zoom
-      const distance = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      setLastTouchDistance(distance);
-      setIsDragging(false);
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
-
-    if (e.touches.length === 1 && isDragging) {
-      // Single touch - drag
-      setPosition({
-        x: e.touches[0].clientX - dragStart.x,
-        y: e.touches[0].clientY - dragStart.y,
-      });
-    } else if (e.touches.length === 2 && lastTouchDistance) {
-      // Two fingers - pinch zoom
-      const distance = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-
-      const container = svgContainerRef.current;
-      if (!container) return;
-
-      // Calculate center point between two fingers
-      const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      const rect = container.getBoundingClientRect();
-      const touchX = centerX - rect.left;
-      const touchY = centerY - rect.top;
-
-      // Calculate new scale based on distance change
-      const scaleChange = distance / lastTouchDistance;
-      const newScale = Math.min(Math.max(0.5, scale * scaleChange), 5);
-
-      // Zoom towards touch center
-      const scaleRatio = newScale / scale;
-      const newX = touchX - (touchX - position.x) * scaleRatio;
-      const newY = touchY - (touchY - position.y) * scaleRatio;
-
-      setScale(newScale);
-      setPosition({ x: newX, y: newY });
-      setLastTouchDistance(distance);
-    }
-  };
-
-  const handleTouchEnd = () => {
-    setIsDragging(false);
-    setLastTouchDistance(null);
-  };
+  // Note: Mouse and touch drag handlers are now managed within the SVG document itself
+  // (see the useEffect that loads the SVG). This prevents conflicts and allows
+  // dragging from anywhere within the SVG while keeping booth selection functional.
 
   const resetView = () => {
     setScale(1);
@@ -375,12 +321,123 @@ const FloorPlan: React.FC = () => {
         return;
       }
 
+      // Handle all mouse events inside SVG for both booth selection and dragging
+      let svgIsDragging = false;
+      let svgDragStart = { x: 0, y: 0 };
+
+      const handleSvgMouseDown = (e: MouseEvent) => {
+        const target = e.target as Element;
+
+        // Check if click is on a booth element
+        const isBoothElement =
+          target.tagName === 'text' ||
+          target.closest('.booth-hitboxes') !== null ||
+          target.classList.contains('booth-hitboxes');
+
+        // If it's a booth element, let booth click handler process it
+        if (isBoothElement) {
+          return;
+        }
+
+        // Otherwise, start dragging from here
+        e.preventDefault();
+        e.stopPropagation();
+        svgIsDragging = true;
+        svgDragStart = { x: e.clientX - position.x, y: e.clientY - position.y };
+        setIsDragging(true);
+        svg.style.cursor = 'grabbing';
+      };
+
+      const handleSvgMouseMove = (e: MouseEvent) => {
+        if (svgIsDragging) {
+          e.preventDefault();
+          setPosition({
+            x: e.clientX - svgDragStart.x,
+            y: e.clientY - svgDragStart.y,
+          });
+        }
+      };
+
+      const handleSvgMouseUp = () => {
+        if (svgIsDragging) {
+          svgIsDragging = false;
+          setIsDragging(false);
+          svg.style.cursor = 'grab';
+        }
+      };
+
+      const handleSvgTouchStart = (e: TouchEvent) => {
+        if (e.touches.length !== 1) return;
+
+        const target = e.target as Element;
+
+        // Check if touch is on a booth element
+        const isBoothElement =
+          target.tagName === 'text' ||
+          target.closest('.booth-hitboxes') !== null ||
+          target.classList.contains('booth-hitboxes');
+
+        // If it's a booth element, let booth touch handler process it
+        if (isBoothElement) {
+          return;
+        }
+
+        // Otherwise, start dragging
+        e.preventDefault();
+        e.stopPropagation();
+        svgIsDragging = true;
+        svgDragStart = {
+          x: e.touches[0].clientX - position.x,
+          y: e.touches[0].clientY - position.y,
+        };
+        setIsDragging(true);
+      };
+
+      const handleSvgTouchMove = (e: TouchEvent) => {
+        if (e.touches.length === 1 && svgIsDragging) {
+          e.preventDefault();
+          setPosition({
+            x: e.touches[0].clientX - svgDragStart.x,
+            y: e.touches[0].clientY - svgDragStart.y,
+          });
+        }
+      };
+
+      const handleSvgTouchEnd = () => {
+        if (svgIsDragging) {
+          svgIsDragging = false;
+          setIsDragging(false);
+        }
+      };
+
+      svg.style.cursor = 'grab';
+      svg.addEventListener('mousedown', handleSvgMouseDown);
+      svg.addEventListener('mousemove', handleSvgMouseMove);
+      svg.addEventListener('mouseup', handleSvgMouseUp);
+      svg.addEventListener('mouseleave', handleSvgMouseUp);
+      svg.addEventListener('touchstart', handleSvgTouchStart, { passive: false });
+      svg.addEventListener('touchmove', handleSvgTouchMove, { passive: false });
+      svg.addEventListener('touchend', handleSvgTouchEnd);
+
+      // Store cleanup function
+      const cleanup = () => {
+        svg.removeEventListener('mousedown', handleSvgMouseDown);
+        svg.removeEventListener('mousemove', handleSvgMouseMove);
+        svg.removeEventListener('mouseup', handleSvgMouseUp);
+        svg.removeEventListener('mouseleave', handleSvgMouseUp);
+        svg.removeEventListener('touchstart', handleSvgTouchStart);
+        svg.removeEventListener('touchmove', handleSvgTouchMove);
+        svg.removeEventListener('touchend', handleSvgTouchEnd);
+      };
+      (svgDoc as any).__cleanupDragHandlers = cleanup;
+
       // Add styling to SVG to enable interactions
       const style = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'style');
       style.textContent = `
         text[class*="cls-"] {
           cursor: pointer;
           transition: all 0.2s;
+          pointer-events: auto;
         }
         text[class*="cls-"]:hover {
           opacity: 0.7;
@@ -396,6 +453,12 @@ const FloorPlan: React.FC = () => {
         .booth-dynamic-highlight {
           pointer-events: none;
         }
+        .booth-hitboxes {
+          pointer-events: auto;
+        }
+        .booth-hitboxes rect {
+          pointer-events: auto;
+        }
         @keyframes boothPulse {
           0%, 100% { fill-opacity: 0.85; }
           50% { fill-opacity: 1; }
@@ -409,6 +472,88 @@ const FloorPlan: React.FC = () => {
 
       // Find all text elements that contain booth numbers
       const textElements = svgDoc.querySelectorAll('text');
+
+      // Build a map from booth text elements to their visual booth rectangle elements
+      const boothTextToRect = new Map<Element, SVGRectElement>();
+      const allBoothRects = Array.from(svgDoc.querySelectorAll('rect'));
+
+      // Helper: compute visual bounding box of a rect after its SVG transform
+      const computeRectBounds = (r: Element) => {
+        const x = parseFloat(r.getAttribute('x') || '');
+        const y = parseFloat(r.getAttribute('y') || '');
+        const w = parseFloat(r.getAttribute('width') || '');
+        const h = parseFloat(r.getAttribute('height') || '');
+        if (isNaN(x) || isNaN(y) || isNaN(w) || isNaN(h) || w < 30 || h < 30) return null;
+
+        const transform = r.getAttribute('transform') || '';
+        if (!transform) return { minX: x, minY: y, maxX: x + w, maxY: y + h };
+
+        const tMatch = transform.match(/translate\(\s*([\d.e+-]+)[\s,]+([\d.e+-]+)\s*\)/);
+        const rMatch = transform.match(/rotate\(\s*([\d.e+-]+)\s*\)/);
+        const tx = tMatch ? parseFloat(tMatch[1]) : 0;
+        const ty = tMatch ? parseFloat(tMatch[2]) : 0;
+        const angle = rMatch ? parseFloat(rMatch[1]) : 0;
+        const rad = (angle * Math.PI) / 180;
+        const cosA = Math.cos(rad);
+        const sinA = Math.sin(rad);
+
+        // Transform all four corners: rotate then translate
+        const corners = [
+          [x, y], [x + w, y], [x, y + h], [x + w, y + h]
+        ].map(([cx, cy]) => ({
+          x: cosA * cx - sinA * cy + tx,
+          y: sinA * cx + cosA * cy + ty
+        }));
+
+        return {
+          minX: Math.min(...corners.map(c => c.x)),
+          minY: Math.min(...corners.map(c => c.y)),
+          maxX: Math.max(...corners.map(c => c.x)),
+          maxY: Math.max(...corners.map(c => c.y))
+        };
+      };
+
+      // Pre-compute visual bounds for all rects (skip very large structural rects)
+      const rectBoundsCache = new Map<Element, { minX: number; minY: number; maxX: number; maxY: number }>();
+      for (const r of allBoothRects) {
+        const bounds = computeRectBounds(r);
+        if (bounds) {
+          const area = (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY);
+          if (area < 500000) rectBoundsCache.set(r, bounds);
+        }
+      }
+
+      textElements.forEach((textEl) => {
+        const tc = textEl.textContent?.trim();
+        if (tc && /^\d{1,2}$/.test(tc)) {
+          // Extract text position from its transform attribute
+          const transform = textEl.getAttribute('transform') || '';
+          const tMatch = transform.match(/translate\(\s*([\d.e+-]+)[\s,]+([\d.e+-]+)\s*\)/);
+          if (!tMatch) return;
+
+          const textX = parseFloat(tMatch[1]);
+          const textY = parseFloat(tMatch[2]);
+          const margin = 10; // SVG units tolerance
+
+          let bestRect: SVGRectElement | null = null;
+          let bestArea = Infinity;
+
+          for (const [r, bounds] of rectBoundsCache) {
+            if (textX >= bounds.minX - margin && textX <= bounds.maxX + margin &&
+                textY >= bounds.minY - margin && textY <= bounds.maxY + margin) {
+              const area = (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY);
+              if (area < bestArea) {
+                bestArea = area;
+                bestRect = r as SVGRectElement;
+              }
+            }
+          }
+
+          if (bestRect) {
+            boothTextToRect.set(textEl, bestRect);
+          }
+        }
+      });
 
       const updateBoothHighlighting = () => {
         // Remove all previously created dynamic highlight rects
@@ -430,26 +575,46 @@ const FloorPlan: React.FC = () => {
               'booth-dimmed'
             );
 
-            // Helper: create a highlight rect behind the text element
+            // Helper: create a highlight rect covering the booth area
             const createHighlightRect = (color: string, strokeColor: string) => {
               try {
-                const bbox = (textElement as SVGTextElement).getBBox();
-                const transform = textElement.getAttribute('transform') || '';
-                const padding = 12;
+                const boothRect = boothTextToRect.get(textElement);
                 const rect = svgDoc.createElementNS('http://www.w3.org/2000/svg', 'rect');
-                rect.setAttribute('x', String(bbox.x - padding));
-                rect.setAttribute('y', String(bbox.y - padding));
-                rect.setAttribute('width', String(bbox.width + padding * 2));
-                rect.setAttribute('height', String(bbox.height + padding * 2));
-                rect.setAttribute('rx', '6');
-                rect.setAttribute('ry', '6');
-                rect.setAttribute('transform', transform);
+
+                if (boothRect) {
+                  // Use booth rect dimensions for full booth highlighting
+                  rect.setAttribute('x', boothRect.getAttribute('x') || '0');
+                  rect.setAttribute('y', boothRect.getAttribute('y') || '0');
+                  rect.setAttribute('width', boothRect.getAttribute('width') || '0');
+                  rect.setAttribute('height', boothRect.getAttribute('height') || '0');
+                  rect.setAttribute('rx', boothRect.getAttribute('rx') || '0');
+                  rect.setAttribute('ry', boothRect.getAttribute('ry') || '0');
+                  rect.setAttribute('transform', boothRect.getAttribute('transform') || '');
+                } else {
+                  // Fallback: highlight around text element
+                  const bbox = (textElement as SVGTextElement).getBBox();
+                  const transform = textElement.getAttribute('transform') || '';
+                  const padding = 12;
+                  rect.setAttribute('x', String(bbox.x - padding));
+                  rect.setAttribute('y', String(bbox.y - padding));
+                  rect.setAttribute('width', String(bbox.width + padding * 2));
+                  rect.setAttribute('height', String(bbox.height + padding * 2));
+                  rect.setAttribute('rx', '6');
+                  rect.setAttribute('ry', '6');
+                  rect.setAttribute('transform', transform);
+                }
+
                 rect.setAttribute('fill', color);
                 rect.setAttribute('stroke', strokeColor);
                 rect.setAttribute('stroke-width', '3');
                 rect.classList.add('booth-dynamic-highlight');
-                // Insert before the text so it renders behind it
-                textElement.parentElement?.insertBefore(rect, textElement);
+
+                // Insert after the booth rect (on top of white fill, but below text)
+                if (boothRect && boothRect.parentElement) {
+                  boothRect.parentElement.insertBefore(rect, boothRect.nextSibling);
+                } else {
+                  textElement.parentElement?.insertBefore(rect, textElement);
+                }
               } catch (e) {
                 // getBBox may fail if element is not rendered
               }
@@ -502,10 +667,9 @@ const FloorPlan: React.FC = () => {
             e.preventDefault();
             e.stopPropagation();
 
-            const booth = boothsRef.current.find((b) => b.id === boothId);
-            if (booth && booth.status === 'available') {
-              handleBoothToggleRef.current(boothId);
-            }
+            // Call handleBoothToggle which will handle booth availability check
+            // and show notification if booth is already taken
+            handleBoothToggleRef.current(boothId);
           };
 
           // Create a large invisible hitbox rect at the text position
@@ -565,6 +729,15 @@ const FloorPlan: React.FC = () => {
     } else {
       objectElement.addEventListener('load', checkSvgLoaded);
     }
+
+    // Cleanup function
+    return () => {
+      const svgDoc = objectElement.contentDocument;
+      if (svgDoc) {
+        const cleanupFn = (svgDoc as any).__cleanupDragHandlers;
+        if (cleanupFn) cleanupFn();
+      }
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -587,6 +760,29 @@ const FloorPlan: React.FC = () => {
 
   return (
     <div className="floor-plan-container">
+      {/* Notification popup */}
+      {notification && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: notification.type === 'error' ? '#dc3545' : '#007bff',
+            color: 'white',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            zIndex: 10000,
+            fontSize: '16px',
+            fontWeight: 'bold',
+            animation: 'slideDown 0.3s ease-out'
+          }}
+        >
+          {notification.message}
+        </div>
+      )}
+
       <div className="controls">
         <h1>ISCA 2026 - Exhibition Floor Plan</h1>
         <div className="control-buttons">
@@ -624,13 +820,6 @@ const FloorPlan: React.FC = () => {
           className="svg-container"
           ref={svgContainerRef}
           onWheel={handleWheel}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
           onContextMenu={handleContextMenu}
           style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
         >
@@ -641,7 +830,7 @@ const FloorPlan: React.FC = () => {
             }}
           >
             <object
-              data="/Booth3.svg"
+              data="/Booth9.svg"
               type="image/svg+xml"
               className="floor-plan-svg"
             >
