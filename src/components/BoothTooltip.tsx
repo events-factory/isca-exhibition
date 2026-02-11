@@ -20,7 +20,7 @@ const BoothTooltip: React.FC<BoothTooltipProps> = ({ booth, x, y, visible }) => 
   // Status badge color
   const statusColor = {
     available: '#28a745',
-    booked: '#dc3545',
+    booked: '#8B4789', // Dark purple for booked
     reserved: '#ffc107'
   }[booth.status] || '#6c757d';
 
@@ -38,12 +38,22 @@ const BoothTooltip: React.FC<BoothTooltipProps> = ({ booth, x, y, visible }) => 
 
   const cleanDescription = sanitizeDescription(booth.description);
 
+  // Position tooltip below cursor with offset
+  // Offset horizontally to center it roughly under cursor
+  // Offset vertically to appear below cursor (30px down)
+  const tooltipX = x - 110; // Center the tooltip (min-width is 220px, so offset by half)
+  const tooltipY = y + 30; // Position below cursor
+
+  // Prevent tooltip from going off-screen
+  const maxX = window.innerWidth - 250; // Account for tooltip width
+  const finalX = Math.max(10, Math.min(tooltipX, maxX));
+
   return (
     <div
       className="booth-tooltip"
       style={{
-        left: `${x + 15}px`,
-        top: `${y + 15}px`
+        left: `${finalX}px`,
+        top: `${tooltipY}px`
       }}
     >
       <div className="booth-tooltip-header">
