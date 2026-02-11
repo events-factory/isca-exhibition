@@ -35,7 +35,7 @@
 }
 
 .modal-content.booking-wizard {
-  max-width: 900px;
+  max-width: 1100px; /* Increased to fit multiple designs side by side */
 }
 
 @keyframes slideUp {
@@ -582,7 +582,7 @@
 
 /* Multi-booth Booking Styles */
 .modal-content.multi-booth {
-  max-width: 700px;
+  max-width: 1100px; /* Increased to fit multiple designs side by side */
 }
 
 /* Booth Accordion */
@@ -591,7 +591,7 @@
   flex-direction: column;
   gap: 8px;
   margin-bottom: 24px;
-  max-height: 400px;
+  max-height: 700px; /* Increased from 400px to accommodate taller design cards */
   overflow-y: auto;
 }
 
@@ -688,7 +688,7 @@
   }
   to {
     opacity: 1;
-    max-height: 500px;
+    max-height: 1200px; /* Increased from 500px for taller design cards */
   }
 }
 

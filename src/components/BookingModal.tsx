@@ -84,6 +84,55 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   // Get available designs for a specific booth
   const getAvailableDesigns = (booth: Booth): BoothDesign[] => {
+    const designs: BoothDesign[] = [];
+
+    console.log(`🎨 Getting designs for Booth ${booth.id}:`, {
+      hasApiProducts: !!booth.apiProducts,
+      apiProductsCount: booth.apiProducts?.length || 0,
+      hasApiProduct: !!booth.apiProduct
+    });
+
+    // NEW: Support multiple products per booth size (multiple design options)
+    if (booth.apiProducts && booth.apiProducts.length > 0) {
+      console.log(`  → Processing ${booth.apiProducts.length} products for Booth ${booth.id}`);
+      booth.apiProducts.forEach((product) => {
+        // Check if product has a single banner
+        if (product.banner) {
+          const price = parseFloat(product.prices);
+          designs.push({
+            id: product.product_code || product.id || `design-${designs.length}`,
+            name: product.name_english,
+            size: booth.size,
+            imagePath: product.banner,
+            price: isNaN(price) ? booth.price || 0 : price,
+            description: product.description_english,
+          });
+        }
+
+        // Check if product has multiple banners array
+        if (product.banners && product.banners.length > 0) {
+          const price = parseFloat(product.prices);
+          product.banners.forEach((banner, index) => {
+            designs.push({
+              id: banner.id || `${product.product_code}-banner-${index}`,
+              name: `${product.name_english} - Design ${index + 1}`,
+              size: booth.size,
+              imagePath: banner.banner,
+              price: isNaN(price) ? booth.price || 0 : price,
+              description: banner.description || product.description_english,
+            });
+          });
+        }
+      });
+
+      if (designs.length > 0) {
+        console.log(`  ✅ Returning ${designs.length} design(s) from apiProducts`);
+        return designs;
+      }
+    }
+
+    // FALLBACK: Old logic for backward compatibility (single apiProduct)
+    console.log(`  → Falling back to single apiProduct for Booth ${booth.id}`);
     if (booth.apiProduct && booth.apiProduct.banner) {
       return [
         {
