@@ -1,9 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import {
-  Booth,
-  BOOTH_CATEGORIES,
-  BoothDesign,
-} from '../types/booth';
+import { Booth, BOOTH_CATEGORIES, BoothDesign } from '../types/booth';
 import DesignSelector from './DesignSelector';
 import PaymentModal from './PaymentModal';
 import {
@@ -23,7 +19,7 @@ interface BookingModalProps {
     boothIds: string[],
     customerName: string,
     email: string,
-    designs: Map<string, { designId: string; designPrice: number }>
+    designs: Map<string, { designId: string; designPrice: number }>,
   ) => void;
   availablePaymentMethods?: PaymentMethod[];
 }
@@ -36,7 +32,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
   availablePaymentMethods,
 }) => {
   const [currentStep, setCurrentStep] = useState(1);
-  const [selectedDesigns, setSelectedDesigns] = useState<Map<string, BoothDesign>>(new Map());
+  const [selectedDesigns, setSelectedDesigns] = useState<
+    Map<string, BoothDesign>
+  >(new Map());
   const [expandedBoothId, setExpandedBoothId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [email, setEmail] = useState('');
@@ -68,7 +66,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     const firstBooth = booths[0];
-    const productId = firstBooth?.apiProduct?.id || firstBooth?.apiProduct?.product_code;
+    const productId =
+      firstBooth?.apiProduct?.id || firstBooth?.apiProduct?.product_code;
     if (productId) {
       fetchProductDetails(productId)
         .then((details) => {
@@ -89,18 +88,21 @@ const BookingModal: React.FC<BookingModalProps> = ({
     console.log(`🎨 Getting designs for Booth ${booth.id}:`, {
       hasApiProducts: !!booth.apiProducts,
       apiProductsCount: booth.apiProducts?.length || 0,
-      hasApiProduct: !!booth.apiProduct
+      hasApiProduct: !!booth.apiProduct,
     });
 
     // NEW: Support multiple products per booth size (multiple design options)
     if (booth.apiProducts && booth.apiProducts.length > 0) {
-      console.log(`  → Processing ${booth.apiProducts.length} products for Booth ${booth.id}`);
+      console.log(
+        `  → Processing ${booth.apiProducts.length} products for Booth ${booth.id}`,
+      );
       booth.apiProducts.forEach((product) => {
         // Check if product has a single banner
         if (product.banner) {
           const price = parseFloat(product.prices);
           designs.push({
-            id: product.product_code || product.id || `design-${designs.length}`,
+            id:
+              product.product_code || product.id || `design-${designs.length}`,
             name: product.name_english,
             size: booth.size,
             imagePath: product.banner,
@@ -126,7 +128,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
       });
 
       if (designs.length > 0) {
-        console.log(`  ✅ Returning ${designs.length} design(s) from apiProducts`);
+        console.log(
+          `  ✅ Returning ${designs.length} design(s) from apiProducts`,
+        );
         return designs;
       }
     }
@@ -153,7 +157,8 @@ const BookingModal: React.FC<BookingModalProps> = ({
         size: booth.size,
         imagePath: banner.banner,
         price: booth.price || 0,
-        description: banner.description || booth.apiProduct?.description_english,
+        description:
+          banner.description || booth.apiProduct?.description_english,
       }));
     }
 
@@ -276,12 +281,23 @@ const BookingModal: React.FC<BookingModalProps> = ({
       await submitBooking(bookingData);
 
       // Build designs map for parent callback
-      const designsMap = new Map<string, { designId: string; designPrice: number }>();
+      const designsMap = new Map<
+        string,
+        { designId: string; designPrice: number }
+      >();
       selectedDesigns.forEach((design, boothId) => {
-        designsMap.set(boothId, { designId: design.id, designPrice: design.price });
+        designsMap.set(boothId, {
+          designId: design.id,
+          designPrice: design.price,
+        });
       });
 
-      onBook(booths.map((b) => b.id), customerName, email, designsMap);
+      onBook(
+        booths.map((b) => b.id),
+        customerName,
+        email,
+        designsMap,
+      );
       resetForm();
       onClose();
     } catch (error: any) {
@@ -292,7 +308,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
     }
   };
 
-  const handlePaymentSuccess = (newOrderId: string, token: string, sessionId: string) => {
+  const handlePaymentSuccess = (
+    newOrderId: string,
+    token: string,
+    sessionId: string,
+  ) => {
     setOrderId(newOrderId);
     setPaymentToken(token);
     setPaymentSession(sessionId);
@@ -341,19 +361,30 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal-content booking-wizard multi-booth" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={handleClose}>&times;</button>
+      <div
+        className="modal-content booking-wizard multi-booth"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="modal-close" onClick={handleClose}>
+          &times;
+        </button>
 
-        <h2>Book {booths.length} {booths.length === 1 ? 'Booth' : 'Booths'}</h2>
+        <h2>
+          Book {booths.length} {booths.length === 1 ? 'Booth' : 'Booths'}
+        </h2>
 
         {/* Step indicator */}
         <div className="step-indicator">
-          <div className={`step ${currentStep >= 1 ? 'active' : ''} ${currentStep > 1 ? 'completed' : ''}`}>
+          <div
+            className={`step ${currentStep >= 1 ? 'active' : ''} ${currentStep > 1 ? 'completed' : ''}`}
+          >
             <div className="step-number">1</div>
             <div className="step-label">Choose Designs</div>
           </div>
           <div className="step-line"></div>
-          <div className={`step ${currentStep >= 2 ? 'active' : ''} ${currentStep > 2 ? 'completed' : ''}`}>
+          <div
+            className={`step ${currentStep >= 2 ? 'active' : ''} ${currentStep > 2 ? 'completed' : ''}`}
+          >
             <div className="step-number">2</div>
             <div className="step-label">Your Details</div>
           </div>
@@ -375,10 +406,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
                 const designs = getAvailableDesigns(booth);
 
                 return (
-                  <div key={booth.id} className={`accordion-item ${isExpanded ? 'expanded' : ''}`}>
+                  <div
+                    key={booth.id}
+                    className={`accordion-item ${isExpanded ? 'expanded' : ''}`}
+                  >
                     <div
                       className="accordion-header"
-                      onClick={() => setExpandedBoothId(isExpanded ? null : booth.id)}
+                      onClick={() =>
+                        setExpandedBoothId(isExpanded ? null : booth.id)
+                      }
                     >
                       <div className="accordion-booth-info">
                         <span
@@ -391,12 +427,15 @@ const BookingModal: React.FC<BookingModalProps> = ({
                       <div className="accordion-status">
                         {selectedDesign ? (
                           <span className="design-selected">
-                            {selectedDesign.name} - {formatPrice(selectedDesign.price)}
+                            {selectedDesign.name} -{' '}
+                            {formatPrice(selectedDesign.price)}
                           </span>
                         ) : (
                           <span className="design-pending">Select design</span>
                         )}
-                        <span className="accordion-arrow">{isExpanded ? '▼' : '▶'}</span>
+                        <span className="accordion-arrow">
+                          {isExpanded ? '▼' : '▶'}
+                        </span>
                       </div>
                     </div>
                     {isExpanded && (
@@ -404,7 +443,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
                         <DesignSelector
                           designs={designs}
                           selectedDesignId={selectedDesign?.id || null}
-                          onDesignSelect={(design) => handleDesignSelect(booth.id, design)}
+                          onDesignSelect={(design) =>
+                            handleDesignSelect(booth.id, design)
+                          }
                         />
                       </div>
                     )}
@@ -420,7 +461,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
               </div>
               <div className="summary-row">
                 <span>Designs configured:</span>
-                <strong>{selectedDesigns.size} / {booths.length}</strong>
+                <strong>
+                  {selectedDesigns.size} / {booths.length}
+                </strong>
               </div>
               <div className="summary-row total">
                 <span>Estimated Total:</span>
@@ -429,7 +472,11 @@ const BookingModal: React.FC<BookingModalProps> = ({
             </div>
 
             <div className="form-actions">
-              <button type="button" onClick={handleClose} className="btn-cancel">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="btn-cancel"
+              >
                 Cancel
               </button>
               <button
@@ -447,7 +494,13 @@ const BookingModal: React.FC<BookingModalProps> = ({
         {/* Step 2: Customer Details */}
         {currentStep === 2 && (
           <div className="step-content">
-            <form className="booking-form" onSubmit={(e) => { e.preventDefault(); handleNextStep(); }}>
+            <form
+              className="booking-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleNextStep();
+              }}
+            >
               <div className="form-group">
                 <label htmlFor="name">Contact Name *</label>
                 <input
@@ -518,13 +571,19 @@ const BookingModal: React.FC<BookingModalProps> = ({
               </div>
 
               <div className="form-actions">
-                <button type="button" onClick={handlePreviousStep} className="btn-back">
+                <button
+                  type="button"
+                  onClick={handlePreviousStep}
+                  className="btn-back"
+                >
                   ← Back
                 </button>
                 <button
                   type="submit"
                   className="btn-next"
-                  disabled={!customerName.trim() || !email.trim() || !phone.trim()}
+                  disabled={
+                    !customerName.trim() || !email.trim() || !phone.trim()
+                  }
                 >
                   Next: Review & Pay →
                 </button>
@@ -557,7 +616,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
                         {design && (
                           <>
                             <span className="design-name">{design.name}</span>
-                            <span className="design-price">{formatPrice(design.price)}</span>
+                            <span className="design-price">
+                              {formatPrice(design.price)}
+                            </span>
                           </>
                         )}
                       </div>
@@ -568,7 +629,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
 
               <div className="review-customer">
                 <h4>Contact Information</h4>
-                <p><strong>{customerName}</strong></p>
+                <p>
+                  <strong>{customerName}</strong>
+                </p>
                 <p>{email}</p>
                 {company && <p>{company}</p>}
                 <p>{phone}</p>
@@ -598,17 +661,19 @@ const BookingModal: React.FC<BookingModalProps> = ({
               </div>
 
               <div className="payment-deadline-notice">
-                
                 <div className="notice-content">
                   <strong>Important Payment Notice:</strong>
                   <p>
-                    These booths must be paid within <strong>5 days</strong> of
-                    booking, or they will be automatically released.
+                    Your reservation is valid for <strong>5 days</strong> from
+                    the time of booking. Please ensure payment is made within
+                    this timeframe to confirm your booth.
                   </p>
                 </div>
               </div>
 
-              {submitError && <div className="error-message">{submitError}</div>}
+              {submitError && (
+                <div className="error-message">{submitError}</div>
+              )}
 
               <div className="form-actions">
                 <button
@@ -625,7 +690,9 @@ const BookingModal: React.FC<BookingModalProps> = ({
                   className="btn-submit"
                   disabled={isSubmitting || !paymentMethod}
                 >
-                  {isSubmitting ? 'Processing...' : `Pay ${formatPrice(totalPrice)}`}
+                  {isSubmitting
+                    ? 'Processing...'
+                    : `Pay ${formatPrice(totalPrice)}`}
                 </button>
               </div>
             </div>
