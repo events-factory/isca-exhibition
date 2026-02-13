@@ -1242,7 +1242,7 @@ const FloorPlan: React.FC = () => {
             }}
           >
             <object
-              data="/Booth13.svg"
+              data="/FLOOR-PLAN-ISCA.svg"
               type="image/svg+xml"
               className="floor-plan-svg"
             >
