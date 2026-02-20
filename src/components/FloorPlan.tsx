@@ -37,6 +37,9 @@ const FloorPlan: React.FC = () => {
 
   const svgContainerRef = useRef<HTMLDivElement>(null);
 
+  // Wheel zoom transition management
+  const wheelEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Momentum scrolling state
   const velocityRef = useRef({ x: 0, y: 0 });
   const lastDragTimeRef = useRef(0);
@@ -304,19 +307,19 @@ const FloorPlan: React.FC = () => {
   // Throttled wheel handler for smooth 60fps performance
   const handleWheelThrottled = useMemo(
     () =>
-      throttle((deltaY: number, mouseX: number, mouseY: number) => {
+      throttle((delta: number, mouseX: number, mouseY: number, containerCx: number, containerCy: number) => {
         // Use refs to get current values (prevents stale closures)
         const currentScale = scaleRef.current;
         const currentPosition = positionRef.current;
 
-        // Calculate zoom with smoother delta
-        const delta = deltaY * -0.001;
+        // delta is already sensitivity-adjusted by the caller
         const newScale = Math.min(Math.max(0.5, currentScale + delta), 5);
 
-        // Zoom towards mouse position
+        // Zoom towards mouse position, corrected for transform-origin: center
+        // Formula: newTx = (mx - cx) * (1 - ratio) + tx * ratio
         const scaleRatio = newScale / currentScale;
-        let newX = mouseX - (mouseX - currentPosition.x) * scaleRatio;
-        let newY = mouseY - (mouseY - currentPosition.y) * scaleRatio;
+        let newX = (mouseX - containerCx) - (mouseX - containerCx - currentPosition.x) * scaleRatio;
+        let newY = (mouseY - containerCy) - (mouseY - containerCy - currentPosition.y) * scaleRatio;
 
         // Apply boundary constraints to prevent over-panning
         const maxOffset = 500; // Maximum pan distance in pixels
@@ -351,13 +354,25 @@ const FloorPlan: React.FC = () => {
       e.preventDefault();
       e.stopPropagation();
 
-      // Get mouse position
+      // Suppress smooth CSS transition during continuous wheel zoom so it feels instant
+      const wrapper = container.querySelector('.svg-wrapper') as HTMLElement | null;
+      if (wrapper) wrapper.style.transition = 'none';
+      if (wheelEndTimerRef.current) clearTimeout(wheelEndTimerRef.current);
+      wheelEndTimerRef.current = setTimeout(() => {
+        if (wrapper) wrapper.style.transition = '';
+      }, 200);
+
+      // ctrlKey = true on macOS means touchpad pinch (tiny deltaY ~1-5).
+      // Regular two-finger scroll sends much larger deltaY (~20-100).
+      // Use separate sensitivities so both feel equally responsive.
+      const sensitivity = e.ctrlKey ? 0.015 : 0.003;
+      const delta = e.deltaY * -sensitivity;
+
       const rect = container.getBoundingClientRect();
       const mouseX = e.clientX - rect.left;
       const mouseY = e.clientY - rect.top;
 
-      // Pass data to throttled function
-      handleWheelThrottled(e.deltaY, mouseX, mouseY);
+      handleWheelThrottled(delta, mouseX, mouseY, rect.width / 2, rect.height / 2);
     };
 
     // Add listener with passive: false to allow preventDefault
@@ -483,13 +498,16 @@ const FloorPlan: React.FC = () => {
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
+    const cx = rect.width / 2;
+    const cy = rect.height / 2;
+
     // Toggle between 1x and 2x zoom
     const newScale = scale < 1.5 ? 2 : 1;
     const scaleRatio = newScale / scale;
 
-    // Zoom towards double-click position
-    const newX = mouseX - (mouseX - position.x) * scaleRatio;
-    const newY = mouseY - (mouseY - position.y) * scaleRatio;
+    // Zoom towards double-click position, corrected for transform-origin: center
+    const newX = (mouseX - cx) - (mouseX - cx - position.x) * scaleRatio;
+    const newY = (mouseY - cy) - (mouseY - cy - position.y) * scaleRatio;
 
     // Apply boundary constraints
     const maxOffset = 500;
@@ -506,6 +524,17 @@ const FloorPlan: React.FC = () => {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip shortcuts when typing in any input field
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
       // Zoom in: + or =
       if (e.key === '+' || e.key === '=') {
         e.preventDefault();
@@ -720,12 +749,14 @@ const FloorPlan: React.FC = () => {
             const mouseX = centerX - rect.left;
             const mouseY = centerY - rect.top;
 
-            // Zoom towards pinch center (use current ref values)
+            // Zoom towards pinch center, corrected for transform-origin: center
             const currentScale = scaleRef.current;
             const currentPos = positionRef.current;
             const scaleRatio = newScale / currentScale;
-            const newX = mouseX - (mouseX - currentPos.x) * scaleRatio;
-            const newY = mouseY - (mouseY - currentPos.y) * scaleRatio;
+            const cx = rect.width / 2;
+            const cy = rect.height / 2;
+            const newX = (mouseX - cx) - (mouseX - cx - currentPos.x) * scaleRatio;
+            const newY = (mouseY - cy) - (mouseY - cy - currentPos.y) * scaleRatio;
 
             // Direct update for instant feedback
             setScale(newScale);
@@ -786,6 +817,36 @@ const FloorPlan: React.FC = () => {
         }
       };
 
+      // Wheel handler inside the SVG document — CRITICAL for touchpad zoom.
+      // The <object> tag is a separate browsing context, so wheel events fired
+      // on the SVG never reach the outer container's listener. We must attach
+      // our own non-passive handler here so preventDefault() fires before the
+      // browser can interpret the pinch/scroll as a page zoom.
+      const handleSvgWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const mainContainer = svgContainerRef.current;
+        if (!mainContainer) return;
+
+        // Suppress smooth CSS transition during continuous wheel zoom
+        const wrapper = mainContainer.querySelector('.svg-wrapper') as HTMLElement | null;
+        if (wrapper) wrapper.style.transition = 'none';
+        if (wheelEndTimerRef.current) clearTimeout(wheelEndTimerRef.current);
+        wheelEndTimerRef.current = setTimeout(() => {
+          if (wrapper) wrapper.style.transition = '';
+        }, 200);
+
+        const sensitivity = e.ctrlKey ? 0.015 : 0.003;
+        const delta = e.deltaY * -sensitivity;
+
+        const rect = mainContainer.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        handleWheelThrottled(delta, mouseX, mouseY, rect.width / 2, rect.height / 2);
+      };
+
       svg.style.cursor = 'grab';
       svg.addEventListener('mousedown', handleSvgMouseDown);
       svg.addEventListener('mousemove', handleSvgMouseMove);
@@ -794,6 +855,7 @@ const FloorPlan: React.FC = () => {
       svg.addEventListener('touchstart', handleSvgTouchStart, { passive: false });
       svg.addEventListener('touchmove', handleSvgTouchMove, { passive: false });
       svg.addEventListener('touchend', handleSvgTouchEnd);
+      svg.addEventListener('wheel', handleSvgWheel, { passive: false });
 
       // Store cleanup function
       const cleanup = () => {
@@ -804,6 +866,7 @@ const FloorPlan: React.FC = () => {
         svg.removeEventListener('touchstart', handleSvgTouchStart);
         svg.removeEventListener('touchmove', handleSvgTouchMove);
         svg.removeEventListener('touchend', handleSvgTouchEnd);
+        svg.removeEventListener('wheel', handleSvgWheel);
       };
       (svgDoc as any).__cleanupDragHandlers = cleanup;
 
@@ -1197,12 +1260,6 @@ const FloorPlan: React.FC = () => {
           <button onClick={() => setShowBoothList(!showBoothList)}>
             {showBoothList ? '✕ Hide' : '☰ Show'} Booth List
           </button>
-          <button onClick={() => setScale((s) => Math.min(s + 0.2, 5))}>
-            Zoom In
-          </button>
-          <button onClick={() => setScale((s) => Math.max(s - 0.2, 0.5))}>
-            Zoom Out
-          </button>
           <button onClick={resetView}>Reset View</button>
           <button onClick={zoomToFit} title="Fit entire floor plan in view">
             Fit to View
@@ -1235,6 +1292,22 @@ const FloorPlan: React.FC = () => {
           onDoubleClick={handleDoubleClick}
           style={{ cursor: isDragging ? 'grabbing' : 'grab' }}
         >
+          <div className="map-zoom-controls">
+            <button
+              className="map-zoom-btn"
+              onClick={() => setScale((s) => Math.min(s + 0.2, 5))}
+              title="Zoom in"
+            >
+              +
+            </button>
+            <button
+              className="map-zoom-btn"
+              onClick={() => setScale((s) => Math.max(s - 0.2, 0.5))}
+              title="Zoom out"
+            >
+              −
+            </button>
+          </div>
           <div
             className={`svg-wrapper ${!isDragging && !isAnimating ? 'smooth-transition' : ''}`}
             style={{
