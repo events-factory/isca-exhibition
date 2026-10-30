@@ -2,6 +2,8 @@ import { ApiResponse } from '../types/booth';
 
 
 
+
+
 // Use relative URL in development (proxied), absolute URL in production
 const API_BASE_URL = process.env.NODE_ENV === 'development'
   ? '/Api'
